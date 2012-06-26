@@ -1,8 +1,9 @@
+# -*- coding: gb2312 -*-
 import socket, select
 import threading, time
 import struct, StringIO
 import cPickle as pickle
-from engine import *
+import task
 
 #
 # --- pickle docs ---
@@ -10,8 +11,9 @@ from engine import *
 #
 
 DEFAULT_NODE_PORT = 9910
-  
-class node:
+MSG_HDR_LEN = struct.calcsize("ii")
+
+class dis_node:
     def __init__(self, name, parent=None, port=DEFAULT_NODE_PORT):
         self.lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.lport = port
@@ -19,7 +21,7 @@ class node:
         self.childs = {}
         self.sock_list = []
         self.name = name
-        self.cmds = {"CONN":1, "TASK":2, "EXIT":3, "MAX":6}
+        self.cmds = {"CONN":1, "TASK":2, "IDLE":3, "CFG":4, "PLUGIN":5, "EXIT":6, "MAX":10}
 
         if parent:
             self.connect(parent)
@@ -28,25 +30,32 @@ class node:
         self.server_thread.start()
         
     def rcv_msg(self, node_info, buf):
-        hdr_len = struct.calcsize("ii")
-        if len(buf) < hdr_len:
+        if len(buf) < MSG_HDR_LEN:
             return buf
 
         hdr = struct.unpack_from("ii", buf)
         if len(buf) < hdr[1]:
             return buf
         
+        msg = buf[MSG_HDR_LEN:hdr[1]]
+        
         if hdr[0] == self.cmds["CONN"]:
-            name = buf[hdr_len:hdr[1]]
-            buf = buf[hdr[1]:]
-            print name, buf
+            node_info['name'] = msg
+            self.handler_node_conn(node_info)
             
-            if node_info["is_child"]:
-                msg = self.name
-                stream = struct.pack("ii", self.cmds["CONN"], hdr_len + len(msg))
-                stream += msg
-                node_info["sock"].send(stream)
-
+        if hdr[0] == self.cmds["IDLE"]:
+            self.handler_node_idle(node_info)
+            
+        if hdr[0] == self.cmds["CFG"]:
+            self.handler_node_cfg(pickle.loads(msg))
+            
+        if hdr[0] == self.cmds["TASK"]:
+            task = pickle.loads(msg)
+            print "recv task:", task.id, task.get_task_count()
+            self.handler_node_task(task)
+        
+        buf = buf[hdr[1]:]
+        
         return self.rcv_msg(node_info, buf)
     
     def server(self):
@@ -88,29 +97,41 @@ class node:
                     
             if len(errfds) > 0:
                 pass
-   
-    def handler_node_idle(self, node, task):
+
+    def handler_node_conn(self, node):
+        pass
+    
+    def handler_node_idle(self, node):
         pass
     
     def handler_node_task(self, task):
         pass
     
-    def set_node_task(self, node, task):
-        s = pickle.dumps(task)
-        print s, len(s)
-        stream = struct.pack("ii", 
-                             self.cmds["TASK"], 
-                             struct.calcsize("ii") + len(self.name))
-        
+    def handler_node_cfg(self, cfg):
         pass
     
+    def __set_node_obj(self, node, cmd, obj):
+        obj_s = pickle.dumps(obj)
+        stream = struct.pack("ii", self.cmds[cmd], MSG_HDR_LEN + len(obj_s))
+        stream += obj_s
+        print "send task %d bytes" % len(stream)
+        node['sock'].send(stream)
+    
+    def set_node_task(self, node, task):
+        self.__set_node_obj(node, "TASK", task)
+    
+    def set_node_cfg(self, node, cfg):
+        self.__set_node_obj(node, "CFG", cfg)
+        
     def set_node_idle(self):
         # request for tasks
         if not self.parent:
             return
         
-        pass
-    
+        stream = struct.pack("ii", self.cmds["IDLE"], MSG_HDR_LEN)
+        self.parent['sock'].send(stream)
+        time.sleep(2)
+        
     def connect(self, address):
         parent = {}
         sock = socket.create_connection(address, 5)
@@ -118,13 +139,10 @@ class node:
         parent['addr'] = address
         parent['is_child'] = False
         parent['pending_pack'] = None
+        
         # msg header
-        stream = struct.pack("ii",  
-                             self.cmds["CONN"], 
-                             struct.calcsize("ii") + len(self.name))
-        
+        stream = struct.pack("ii", self.cmds["CONN"], MSG_HDR_LEN + len(self.name))
         stream += self.name
-        
         sock.send(stream)
         
         self.parent = parent
@@ -139,18 +157,18 @@ class node:
         print fd.getvalue()
         pass
     
-node0 = node("node0")
-node1 = node("i'm child" * 1000, ('localhost', 9910), 9911)
-
-fd = StringIO.StringIO()
-#print type(node1.parent)
-#childs = pickle.dump(node1.parent, fd)
-#print fd.getvalue()
-s = pickle.dumps(node1.cmds)
-print s, len(s)
-
-node1.test()
-
-while True:
-    pass
+#node0 = dis_node("node0")
+#node1 = dis_node("i'm child" * 1000, ('localhost', 9910), 9911)
+#
+#fd = StringIO.StringIO()
+##print type(node1.parent)
+##childs = pickle.dump(node1.parent, fd)
+##print fd.getvalue()
+#s = pickle.dumps(node1.cmds)
+#print s, len(s)
+#
+#node1.test()
+#
+#while True:
+#    pass
 

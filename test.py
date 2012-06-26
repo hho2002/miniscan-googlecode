@@ -1,4 +1,4 @@
-from engine import *
+from task import *
 import socket, struct
 
 class test_plugin(engine_plugin):
