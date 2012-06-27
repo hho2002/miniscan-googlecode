@@ -19,9 +19,16 @@ class dis_node:
         self.lport = port
         self.parent = None
         self.childs = {}
+        self.status = {}
         self.sock_list = []
         self.name = name
-        self.cmds = {"CONN":1, "TASK":2, "IDLE":3, "CFG":4, "PLUGIN":5, "EXIT":6, "MAX":10}
+        self.cmds = {"CONN":1, 
+                     "TASK":2, 
+                     "IDLE":3, 
+                     "CFG":4, 
+                     "PLUGIN":5, 
+                     "STATUS":6, 
+                     "MAX":10}
 
         if parent:
             self.connect(parent)
@@ -49,10 +56,14 @@ class dis_node:
         if hdr[0] == self.cmds["CFG"]:
             self.handler_node_cfg(pickle.loads(msg))
             
+        if hdr[0] == self.cmds["STATUS"]:
+            key, value = pickle.loads(msg)
+            print "STATUS:", key, value
+            node_info[key] = value
+            self.handler_node_status(node_info)
+            
         if hdr[0] == self.cmds["TASK"]:
-            task = pickle.loads(msg)
-            print "recv task:", task.id, task.get_task_count()
-            self.handler_node_task(task)
+            self.handler_node_task(pickle.loads(msg))
         
         buf = buf[hdr[1]:]
         
@@ -73,6 +84,7 @@ class dis_node:
                     child['addr'] = address
                     child['pending_pack'] = None
                     child['is_child'] = True
+                    child['busy'] = False
                     self.childs[connection] = child
                     self.sock_list.append(connection)
                     infds.remove(self.lsock)
@@ -85,7 +97,7 @@ class dis_node:
                         self.sock_list.remove(rcv_sock)
                         continue
                     
-                    if self.parent and self.parent["sock"] == rcv_sock:
+                    if self.parent and self.parent['sock'] == rcv_sock:
                         node_info = self.parent
                     else:
                         node_info = self.childs[rcv_sock]
@@ -110,18 +122,21 @@ class dis_node:
     def handler_node_cfg(self, cfg):
         pass
     
-    def __set_node_obj(self, node, cmd, obj):
+    def handler_node_status(self, node):
+        pass
+    
+    def __send_node_obj(self, node, cmd, obj):
         obj_s = pickle.dumps(obj)
         stream = struct.pack("ii", self.cmds[cmd], MSG_HDR_LEN + len(obj_s))
         stream += obj_s
-        print "send task %d bytes" % len(stream)
+        #print "send task %d bytes" % len(stream)
         node['sock'].send(stream)
     
     def set_node_task(self, node, task):
-        self.__set_node_obj(node, "TASK", task)
+        self.__send_node_obj(node, "TASK", task)
     
     def set_node_cfg(self, node, cfg):
-        self.__set_node_obj(node, "CFG", cfg)
+        self.__send_node_obj(node, "CFG", cfg)
         
     def set_node_idle(self):
         # request for tasks
@@ -130,8 +145,19 @@ class dis_node:
         
         stream = struct.pack("ii", self.cmds["IDLE"], MSG_HDR_LEN)
         self.parent['sock'].send(stream)
-        time.sleep(2)
+    
+    def set_node_status(self, key, value):
+        """ 通知父节点状态改变
+        """
+        try:
+            if self.status[key]== value:
+                return
+        except: pass
         
+        self.status[key] = value
+        if self.parent:
+            self.__send_node_obj(self.parent, "STATUS", (key, value))
+    
     def connect(self, address):
         parent = {}
         sock = socket.create_connection(address, 5)
@@ -147,16 +173,7 @@ class dis_node:
         
         self.parent = parent
         self.sock_list.append(sock)
-
-    def close(self):
-        pass
-    
-    def test(self):
-        fd = StringIO.StringIO()
-        pickle.dump(self.parent, fd)
-        print fd.getvalue()
-        pass
-    
+  
 #node0 = dis_node("node0")
 #node1 = dis_node("i'm child" * 1000, ('localhost', 9910), 9911)
 #

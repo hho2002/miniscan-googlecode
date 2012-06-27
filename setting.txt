@@ -1,6 +1,6 @@
 # init engine setting
 node_id = parent
-maxthread = 10
+maxthread = 5
 plugin = test
 
 # plugin params
@@ -10,11 +10,11 @@ ports = 80 3389 135
 web_plugin = web_test
 web_host =
 http://172.16.16.99/
-http://172.16.16.6/
+#http://172.16.16.6/
 
 # targets
 host =
-172.16.16.2-172.16.16.50
 172.16.16.64-172.16.16.66
+172.16.16.2-172.16.16.50
 172.16.16.110-172.16.16.220 
 172.16.16.99 172.16.16.90  # 

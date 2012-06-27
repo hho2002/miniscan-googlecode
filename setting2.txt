@@ -1,0 +1,5 @@
+# init engine setting
+node_id = child1
+node_port = 9911
+node_parent = 127.0.0.1:9910
+maxthread = 5

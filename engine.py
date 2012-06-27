@@ -75,7 +75,7 @@ class engine(dis_node):
         dis_node.__init__(self, name, parent, port)
         
     def init_threads(self):
-        self.queue = Queue.Queue(self.max_thread)
+        self.queue = Queue.Queue(self.max_thread * 2)
         for i in xrange(self.max_thread):
             thread = threading.Thread(target=self.worker_thread,
                                       name = "thread" + str(i))
@@ -84,8 +84,12 @@ class engine(dis_node):
             thread.start()
             
     def __init_plugins(self, cfg):
-        plugins = cfg.get_cfg_vaule("plugin").split(" ")
-        web_plugins = cfg.get_cfg_vaule("web_plugin").split(" ")
+        web_plugins = plugins = []
+        
+        try:
+            plugins = cfg.get_cfg_vaule("plugin").split(" ")
+            web_plugins = cfg.get_cfg_vaule("web_plugin").split(" ")
+        except: pass
         
         for plugin_name in set(plugins + web_plugins):
             module = __import__(plugin_name)
@@ -104,12 +108,13 @@ class engine(dis_node):
         
         plugins = self.__init_plugins(cfg)
         
-        task = node_task(cfg.get_cfg_vaule("host"), plugins[0])
-        self.tasks["task0"] = task
+        if len(plugins[0]) > 0:
+            task = node_task(cfg.get_cfg_vaule("host"), plugins[0])
+            self.tasks["task0"] = task
         
-        # 加载web任务
-        web_task = web_crawler(cfg.get_cfg_vaule("web_host"), plugins[1])
-        self.tasks["task1"] = web_task
+        if len(plugins[1]) > 0:
+            web_task = web_crawler(cfg.get_cfg_vaule("web_host"), plugins[1])
+            self.tasks["task1"] = web_task
         
     def handler_node_conn(self, node):
         """ 发送配置给节点
@@ -123,30 +128,62 @@ class engine(dis_node):
     def handler_node_task(self, task):
         """ 接受到节点任务
         """       
-        self.tasks[task.id] = task
+        if isinstance(task, list):
+            print "RCV task:", len(task)
+            for work in task:
+                if self.queue.full():
+                    self.set_node_status("busy", True)
+
+                self.queue.put(work)
+            print "RCV task DONE"
+        else:
+            self.tasks[task.id] = task
+    
+    def handler_node_status(self, node):
+        """ 节点状态发生变化
+        """
         pass
     
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
             1、一次分配一段ip
         """
-        
+        return
+    
         task = self.tasks["task0"]
         print "handler_node_idle: tasks " , task.get_task_count()
         child_task = task.split(1)
         self.set_node_task(node, child_task)
     
+    def __try_push_work(self):
+        """ 尝试主动推送队列任务
+                                查询空闲子节点
+        """
+        for node in self.childs.values():
+            if not node['busy']:
+                work = []
+                while len(work) < self.queue.maxsize:
+                    try:
+                        work.append(self.queue.get(timeout = 1))
+                    except:
+                        break
+                    
+                self.set_node_task(node, work)
+    
     def worker_thread(self):
+        """ 任务分发线程
+        """
         while True:
             try:
-                ip, plugin = self.queue.get(timeout = 5)
+                task, plugin = self.queue.get(timeout = 1)
                 # do task !!!
-                self.plugins[plugin].handle_task(ip)
+                task = (self.name, task)
+                self.plugins[plugin].handle_task(task)
             except Queue.Empty:
                 if not self.parent and self.done:
                     break
         
-        print threading.current_thread().name, " worker exiting !!!"
+        #print threading.current_thread().name, " worker exiting !!!"
         
     def run(self):
         self.init_threads()
@@ -157,31 +194,40 @@ class engine(dis_node):
             for task in self.tasks.values():
                 if task.get_task_count() == 0:
                     continue
-                
+
                 try:
                     self.queue.put(task.move_next())
                     all_done = False
-                except:
-                    pass
-
+                except: pass
+            
+            # test node busy
+            if self.queue.full():
+                self.set_node_status("busy", True)
+                self.__try_push_work()
+                #time.sleep(2)
+            elif self.queue.qsize() < self.queue.maxsize/2:
+                self.set_node_status("busy", False)
+                
             if self.parent and self.queue.empty():
                 self.set_node_idle()
+                #time.sleep(2)
                 continue
-            elif all_done:
+            
+            if all_done and not self.parent:
                 break
             
         self.done = True
-        print "main scan thread exiting !!!"
+        print self.name, "main scan thread exiting !!!"
         #wait for all thread exit
         for thead in self.thread_pool:
             threading.Thread.join(thead)
             
 server = engine()
 server.load_task("setting.txt")
-server.run()
+threading.Thread(target=server.run).start()
 
-#child = engine("setting2.txt")
-#child.run()
+child = engine("setting2.txt")
+child.run()
 
 while True:
     pass
