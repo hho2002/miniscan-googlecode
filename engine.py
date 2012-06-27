@@ -7,6 +7,7 @@ import copy
 from socket import *
 from node import *
 from task import *
+from crawler import web_crawler
 
 class cfg_file_parser:
     # class (or static) variable
@@ -56,6 +57,7 @@ class engine(dis_node):
         self.queue = None
         self.plugins = {}
         self.tasks = {}
+        self.done = False
         
         # init dis_node
         name = self.cfg.get_cfg_vaule("node_id")
@@ -83,14 +85,16 @@ class engine(dis_node):
             
     def __init_plugins(self, cfg):
         plugins = cfg.get_cfg_vaule("plugin").split(" ")
-        for plugin_name in plugins:
+        web_plugins = cfg.get_cfg_vaule("web_plugin").split(" ")
+        
+        for plugin_name in set(plugins + web_plugins):
             module = __import__(plugin_name)
 
             plugin = module.init_plugin(plugin_name)
             plugin.engine = self
             self.plugins[plugin_name] = plugin
-        
-        return plugins
+            
+        return (plugins, web_plugins)
     
     def load_task(self, filename):
         cfg = cfg_file_parser(filename)
@@ -100,8 +104,12 @@ class engine(dis_node):
         
         plugins = self.__init_plugins(cfg)
         
-        task = node_task(cfg.get_cfg_vaule("host"), plugins)
+        task = node_task(cfg.get_cfg_vaule("host"), plugins[0])
         self.tasks["task0"] = task
+        
+        # 加载web任务
+        web_task = web_crawler(cfg.get_cfg_vaule("web_host"), plugins[1])
+        self.tasks["task1"] = web_task
         
     def handler_node_conn(self, node):
         """ 发送配置给节点
@@ -131,36 +139,49 @@ class engine(dis_node):
     def worker_thread(self):
         while True:
             try:
-                ip, plugin = self.queue.get(timeout = 2)
+                ip, plugin = self.queue.get(timeout = 5)
                 # do task !!!
                 self.plugins[plugin].handle_task(ip)
             except Queue.Empty:
-                if not self.parent:
+                if not self.parent and self.done:
                     break
-    
+        
+        print threading.current_thread().name, " worker exiting !!!"
+        
     def run(self):
         self.init_threads()
+        self.done = False
         
         while True:
+            all_done = True
             for task in self.tasks.values():
                 if task.get_task_count() == 0:
                     continue
                 
-                self.queue.put(task.move_next())
-                
+                try:
+                    self.queue.put(task.move_next())
+                    all_done = False
+                except:
+                    pass
+
             if self.parent and self.queue.empty():
                 self.set_node_idle()
                 continue
-        
+            elif all_done:
+                break
+            
+        self.done = True
+        print "main scan thread exiting !!!"
         #wait for all thread exit
         for thead in self.thread_pool:
             threading.Thread.join(thead)
             
 server = engine()
 server.load_task("setting.txt")
+server.run()
 
-child = engine("setting2.txt")
-child.run()
+#child = engine("setting2.txt")
+#child.run()
 
 while True:
     pass

@@ -2,7 +2,15 @@
 node_id = parent
 maxthread = 10
 plugin = test
+
+# plugin params
 ports = 80 3389 135
+
+# web hosts
+web_plugin = web_test
+web_host =
+http://172.16.16.99/
+http://172.16.16.6/
 
 # targets
 host =

@@ -1,7 +1,7 @@
 from task import *
 import socket, struct
 
-class test_plugin(engine_plugin):
+class port_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
     
@@ -17,4 +17,4 @@ class test_plugin(engine_plugin):
                 pass
             
 def init_plugin(name):
-    return test_plugin(name)
+    return port_plugin(name)
