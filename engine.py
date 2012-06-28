@@ -54,6 +54,7 @@ class engine(dis_node):
         self.cfg = cfg_file_parser(ini_file)
         self.max_thread = 10
         self.thread_pool = []
+        self.thread_idle = set()
         self.queue = None
         self.plugins = {}
         self.tasks = {}
@@ -74,15 +75,16 @@ class engine(dis_node):
             
         dis_node.__init__(self, name, parent, port)
         
-    def init_threads(self):
+    def __init_threads(self):
         self.queue = Queue.Queue(self.max_thread * 2)
         for i in xrange(self.max_thread):
             thread = threading.Thread(target=self.worker_thread,
+                                      args = (i,),
                                       name = "thread" + str(i))
             self.thread_pool.append(thread)
             thread.setDaemon(0)
             thread.start()
-            
+    
     def __init_plugins(self, cfg):
         web_plugins = plugins = []
         
@@ -99,6 +101,15 @@ class engine(dis_node):
             self.plugins[plugin_name] = plugin
             
         return (plugins, web_plugins)
+    
+    def __id_to_task(self, _id):
+        for task in self.tasks.values():
+            try:
+                task = task.get_task_by_id(_id)
+                return task
+            except: pass
+            
+        raise Exception("Task id %d no found" % _id)
     
     def load_task(self, filename):
         cfg = cfg_file_parser(filename)
@@ -137,25 +148,28 @@ class engine(dis_node):
                 self.queue.put(work)
             print "RCV task DONE"
         else:
+            print "RCV task obj:", task.id
             self.tasks[task.id] = task
     
     def handler_node_status(self, node, key):
         """ 节点状态发生变化
         """
         if key == "done_id":
-            id = node[key]
-            pass
+            task = self.__id_to_task(node[key])
+            task.done = True
     
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
             1、一次分配一段ip
         """
-        return
-    
+            
         task = self.tasks["task0"]
-        print "handler_node_idle: tasks " , task.get_task_count()
-        child_task = task.split(1)
-        self.set_node_task(node, child_task)
+        #print "handler_node_idle: tasks " , task.get_task_count()
+        try:
+            child_task = task.split(1)
+            #child_task.node = node
+            self.set_node_task(node, child_task)
+        except: pass
     
     def __try_push_work(self):
         """ 尝试主动推送队列任务
@@ -172,36 +186,49 @@ class engine(dis_node):
                     
                 self.set_node_task(node, work)
     
-    def worker_thread(self):
+    def worker_thread(self, thread_id):
         """ 任务分发线程
         """
         while True:
             try:
                 task, plugin = self.queue.get(timeout = 1)
-                # do task !!!
+                
+                try:
+                    self.thread_idle.remove(thread_id)
+                except: pass
+                
+                self.set_node_status("work_done", False)
+                
                 task = (self.name, task)
                 self.plugins[plugin].handle_task(task)
             except Queue.Empty:
+                self.thread_idle.add(thread_id)
+                
+                if len(self.thread_idle) == self.max_thread:
+                    self.set_node_status("work_done", True)
+                
                 if not self.parent and self.done:
                     break
         
         #print threading.current_thread().name, " worker exiting !!!"
         
     def run(self):
-        self.init_threads()
+        self.__init_threads()
         self.done = False
         
         while True:
             all_done = True
             for task in self.tasks.values():
-                if task.get_task_count() == 0:
+                if not task.test_all_done():
+                    all_done = False
+                    
+                if task.done:
                     continue
 
                 try:
                     self.queue.put(task.move_next())
-                    all_done = False
-                except:
-                    print "task %d done!" % task.id
+                except Exception, e:
+                    print "task %d done! %s" % (task.id, e)
                     self.set_node_status("done_id", task.id)
                     
             # test node busy
@@ -217,7 +244,7 @@ class engine(dis_node):
                 #time.sleep(2)
                 continue
             
-            if all_done and not self.parent:
+            if len(self.thread_idle) == self.max_thread and all_done:
                 break
             
         self.done = True

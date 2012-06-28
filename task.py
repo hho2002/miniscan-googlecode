@@ -23,31 +23,49 @@ class engine_plugin:
 class base_task:
     ID = 0
     def __init__(self, plugins):
+        if len(plugins) < 1:
+            raise Exception("base_task no plugins")
+        
         base_task.ID += 1
         self.id = base_task.ID
+        self.done = False
         self.current = None
         self.childs = {}
         self.plugin = plugins
         self.current_plugin = 0
+        self.node = None        
+    def test_all_done(self):
+        if not self.done:
+            return False
+        
+        for child in self.childs.values():
+            if not child.done:
+                return False
+        return True
+    
     def split(self, count):
         pass
     def handler_next(self):
         pass
     def get_task_count(self):
         pass
-    def get_task_by_id(self, id):
-        if id == self.id:
+    def get_task_by_id(self, _id):
+        if _id == self.id:
             return self
         
-        if id in self.childs.keys():
-            return self.childs[id]
+        if _id in self.childs.keys():
+            return self.childs[_id]
         
         raise Exception("Task id no found")
     def move_next(self):
         plugin = self.plugin[self.current_plugin]
         if self.current_plugin == 0:
-            self.current = self.handler_next()
-        
+            try:
+                self.current = self.handler_next()
+            except:
+                self.done = True
+                raise Exception("Move the last")
+            
         if self.current_plugin < len(self.plugin)-1:
             self.current_plugin += 1
         else:
@@ -161,6 +179,8 @@ class node_task(base_task):
         """
         
         count = min(self.get_task_count() - 1, count)
+        if count < 1:
+            raise Exception("split task_count failed")
         
         if self.hosts.ip_count > 1:
             host = self.hosts.split(max(count/len(self.plugin), 1))
@@ -169,11 +189,11 @@ class node_task(base_task):
             pos = len(self.plugin) - count
             if self.get_task_count() < count:
                 pos = self.current_plugin + 1
-
+                
             plugin = self.plugin[pos:]
             self.plugin = self.plugin[:pos]
 
-            ip =  inet_ntoa(struct.pack("I", htonl(self.hosts.current)))
+            ip = inet_ntoa(struct.pack("I", htonl(self.hosts.current_host)))
             child = node_task(ip, plugin)
             
         self.childs[child.id] = child
