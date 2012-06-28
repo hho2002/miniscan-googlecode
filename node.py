@@ -19,7 +19,7 @@ class dis_node:
         self.lport = port
         self.parent = None
         self.childs = {}
-        self.status = {}
+        self.status = {"work_done":False, "busy":False}
         self.sock_list = []
         self.name = name
         self.cmds = {"CONN":1, 
@@ -84,6 +84,7 @@ class dis_node:
                     child['addr'] = address
                     child['pending_pack'] = None
                     child['is_child'] = True
+                    child['work_done'] = False
                     child['busy'] = False
                     self.childs[connection] = child
                     self.sock_list.append(connection)

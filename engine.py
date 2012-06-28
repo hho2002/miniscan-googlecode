@@ -215,9 +215,8 @@ class engine(dis_node):
     def run(self):
         self.__init_threads()
         self.done = False
-        
         while True:
-            all_done = True
+            all_done = self.status["work_done"]
             for task in self.tasks.values():
                 if not task.test_all_done():
                     all_done = False
@@ -241,12 +240,19 @@ class engine(dis_node):
                 
             if self.parent and self.queue.empty():
                 self.set_node_idle()
-                #time.sleep(2)
+                time.sleep(2)
                 continue
             
+            #test for child work done
+            for child in self.childs.values():
+                if not child["work_done"]:
+                    all_done = False
+                    break
+
             if len(self.thread_idle) == self.max_thread and all_done:
                 break
             
+        
         self.done = True
         print self.name, "main scan thread exiting !!!"
         #wait for all thread exit
