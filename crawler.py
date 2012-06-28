@@ -3,7 +3,9 @@ import httplib, urlparse, urllib2, HTMLParser
 import re, Queue, threading
 import gzip, zlib
 import cPickle as pickle
- 
+
+from task import *
+
 from StringIO import StringIO
 
 class link_parser(HTMLParser.HTMLParser):
@@ -23,18 +25,15 @@ class link_parser(HTMLParser.HTMLParser):
                     if variable == "href":
                         self.nodes.append(value)
                         
-class web_crawler:
+class web_crawler(base_task):
     def __init__(self, host, plugins):
+        base_task.__init__(self, plugins)
         self.nodes = {}
         self.queue = Queue.Queue()
         self.url_count = 0
-        self.thread_pool = []
         self.mutex = threading.Lock()
         self.host = host.split("\n")
-        self.current = None
         self.current_host = 0
-        self.current_plugin = 0
-        self.plugin = plugins
         self.queue.put('/')
     
     def html_decode(self, html):
@@ -102,55 +101,42 @@ class web_crawler:
             if not url in self.nodes:
                 self.nodes[url] = False
                 self.queue.put(url)
-                
-    def worker_thread(self):
-        while True:
-            try:
-                host = self.host[self.current_host]
-                url = self.queue.get(timeout = 1)
-                self.add_url(host + url)
-            except:
-                if self.get_task_count() == 0:
-                    break
-        
+
     def get_task_count(self):
         count = len(self.host) - self.current_host
         if self.queue.empty() and count == 0:
             return 0
         
         return count
-    
-    def move_next(self):
-        plugin = self.plugin[self.current_plugin]
-        if self.current_plugin == 0:
-            if self.queue.empty():
-                self.current_host += 1
-                if self.current_host == len(self.host):
-                    raise Exception("task empty")
+    def handler_next(self):
+        if self.queue.empty():
+            self.current_host += 1
+            if self.current_host == len(self.host):
+                raise Exception("task empty")
                 
-                self.nodes = {}
-                self.queue.put('/')
+            self.nodes = {}
+            self.queue.put('/')
                 
-            host = self.host[self.current_host]
-            url = self.queue.get(timeout = 1)
-            self.current = (host, url)
+        host = self.host[self.current_host]
+        url = self.queue.get(timeout = 1)
+
+        try:
+            self.add_url(host + url)
+        except:
+            print "URL ERROR:", host + url
             
-            try:
-                self.add_url(host + url)
-            except:
-                print "URL ERROR:", host + url
-        
-        if self.current_plugin < len(self.plugin)-1:
-            self.current_plugin += 1
-        else:
-            self.current_plugin = 0
-        
-        return (self.current, plugin)
-    
+        return (host, url)
+
     def split(self, count):
         pass
     
-        
-#clawler = web_crawler("http://172.16.16.99/")
+
+#plugins = ["plugin1", "plugin2", "plugin3"]
+#task1 = node_task("192.168.1.1-192.168.1.3\n192.168.1.4", plugins)
+#clawler = web_crawler("http://172.16.16.99/", ["web_test"])
+#task2 = task1.split(1)
+#
+#print clawler.id, task2.id
+#
 #while True:
 #    print clawler.move_next()

@@ -20,6 +20,41 @@ class engine_plugin:
     def handle_task(self, task):
         pass
     
+class base_task:
+    ID = 0
+    def __init__(self, plugins):
+        base_task.ID += 1
+        self.id = base_task.ID
+        self.current = None
+        self.childs = {}
+        self.plugin = plugins
+        self.current_plugin = 0
+    def split(self, count):
+        pass
+    def handler_next(self):
+        pass
+    def get_task_count(self):
+        pass
+    def get_task_by_id(self, id):
+        if id == self.id:
+            return self
+        
+        if id in self.childs.keys():
+            return self.childs[id]
+        
+        raise Exception("Task id no found")
+    def move_next(self):
+        plugin = self.plugin[self.current_plugin]
+        if self.current_plugin == 0:
+            self.current = self.handler_next()
+        
+        if self.current_plugin < len(self.plugin)-1:
+            self.current_plugin += 1
+        else:
+            self.current_plugin = 0
+            
+        return (self.current, plugin)
+    
 class host_seg:
     # class (or static) variable
     ip_pattern = re.compile(r'(\d+.\d+.\d+.\d+)[ \t,-](\d+.\d+.\d+.\d+)')
@@ -28,7 +63,7 @@ class host_seg:
         offset = 0
         self.ip_seg_list = []
         self.ip_count = 0
-        self.current = None
+        self.current_host = None
         self.current_seg = 0
         if not hosts:
             return
@@ -55,8 +90,8 @@ class host_seg:
         if end_ip < start_ip:
             start_ip, end_ip = end_ip, start_ip
 
-        if not self.current:
-            self.current = start_ip
+        if not self.current_host:
+            self.current_host = start_ip
             
         self.ip_count += end_ip - start_ip + 1
         self.ip_seg_list.append((start_ip, end_ip))
@@ -70,8 +105,8 @@ class host_seg:
                 
                 ip1, ip2 = self.ip_seg_list[self.current_seg]
                 ip = ip2 - (count - seg.ip_count - 1)
-                if ip < self.current:
-                    ip = self.current + 1
+                if ip < self.current_host:
+                    ip = self.current_host + 1
                 
                 self.ip_seg_list[self.current_seg] = (ip1, ip - 1)
                 ip1 = ip
@@ -86,49 +121,29 @@ class host_seg:
     
     def move_next(self):
         if self.ip_count <= 0:
-            return None
+            raise Exception("task empty")
         
         start_ip, end_ip = self.ip_seg_list[self.current_seg]
-        ret = self.current
+        ret = self.current_host
         
-        if self.current < end_ip:
-            self.current += 1
+        if self.current_host < end_ip:
+            self.current_host += 1
         elif self.current_seg < len(self.ip_seg_list) - 1:
             self.current_seg += 1
-            self.current = self.ip_seg_list[self.current_seg][0]
+            self.current_host = self.ip_seg_list[self.current_seg][0]
         
         self.ip_count -= 1
         return ret
 
-class node_task:
-    ID = 0
+class node_task(base_task):
     def __init__(self, hosts = None, plugins = None):
+        base_task.__init__(self, plugins)
+        
         if isinstance(hosts, host_seg):
             self.hosts = hosts
         else:
             self.hosts = host_seg(hosts)
-
-        self.plugin = []
-        
-        if plugins:
-            for p in plugins:
-                self.plugin.append(p)
-
-        node_task.ID += 1
-        self.id = node_task.ID
-        self.current_plugin = 0
-        self.current_host = None
-        self.childs = {}
-        
-    def get_task_by_id(self, id):
-        if id == self.id:
-            return self
-        
-        if id in self.childs.keys():
-            return self.childs[id]
-        
-        return None
-    
+   
     def get_task_count(self):        
         ret = len(self.plugin) * self.hosts.ip_count - self.current_plugin 
         if self.current_plugin != 0:
@@ -136,19 +151,8 @@ class node_task:
             
         return ret
     
-    def move_next(self):
-        plugin = self.plugin[self.current_plugin]
-        if self.current_plugin == 0:
-            self.current_host = self.hosts.move_next()
-            if self.current_host == None:
-                raise Exception("task empty")
-        
-        if self.current_plugin < len(self.plugin)-1:
-            self.current_plugin += 1
-        else:
-            self.current_plugin = 0
-            
-        return (self.current_host, plugin)
+    def handler_next(self):
+        return self.hosts.move_next()
     
     def split(self, count):
         """ ´ÖÂÔÈÎÎñÇĞ·Ö
@@ -174,7 +178,6 @@ class node_task:
             
         self.childs[child.id] = child
         return child
-            
 
 #host1 = host_seg("192.168.1.1-192.168.1.3\n192.168.1.4")
 #host2 = host1.split(2)
@@ -188,17 +191,25 @@ class node_task:
 #task3 = task1.split(1)
 #
 #print task1.get_task_by_id(task2.id), task2
-
+#
 #while True:
 #    try:
 #        print task1.move_next()
 #    except:
 #        break
 #    
-#print "Task2"
+#print "Task2", task2.get_task_count()
 #
 #while True:
 #    try:
 #        print task2.move_next()
+#    except:
+#        break
+#    
+#print "Task3", task3.get_task_count()
+#
+#while True:
+#    try:
+#        print task3.move_next()
 #    except:
 #        break

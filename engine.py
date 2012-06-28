@@ -139,10 +139,12 @@ class engine(dis_node):
         else:
             self.tasks[task.id] = task
     
-    def handler_node_status(self, node):
+    def handler_node_status(self, node, key):
         """ 节点状态发生变化
         """
-        pass
+        if key == "done_id":
+            id = node[key]
+            pass
     
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
@@ -198,8 +200,10 @@ class engine(dis_node):
                 try:
                     self.queue.put(task.move_next())
                     all_done = False
-                except: pass
-            
+                except:
+                    print "task %d done!" % task.id
+                    self.set_node_status("done_id", task.id)
+                    
             # test node busy
             if self.queue.full():
                 self.set_node_status("busy", True)

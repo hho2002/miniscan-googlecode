@@ -60,7 +60,7 @@ class dis_node:
             key, value = pickle.loads(msg)
             print "STATUS:", key, value
             node_info[key] = value
-            self.handler_node_status(node_info)
+            self.handler_node_status(node_info, key)
             
         if hdr[0] == self.cmds["TASK"]:
             self.handler_node_task(pickle.loads(msg))
@@ -122,7 +122,7 @@ class dis_node:
     def handler_node_cfg(self, cfg):
         pass
     
-    def handler_node_status(self, node):
+    def handler_node_status(self, node, key):
         pass
     
     def __send_node_obj(self, node, cmd, obj):
