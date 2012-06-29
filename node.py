@@ -31,7 +31,7 @@ class dis_node:
                      "MAX":10}
 
         if parent:
-            self.connect(parent)
+            self.__connect(parent)
             
         self.server_thread = threading.Thread(target=self.server)
         self.server_thread.start()
@@ -70,12 +70,15 @@ class dis_node:
         return self.rcv_msg(node_info, buf)
     
     def server(self):
-        self.lsock.bind(('localhost', self.lport))
+        self.lsock.bind(('', self.lport))
         self.lsock.listen(10)
         self.sock_list.append(self.lsock)
         while True:
             infds,outfds,errfds = select.select(self.sock_list, [], self.sock_list, 1)
             
+            if self.parent and not self.parent['sock']:
+                self.__connect(self.parent['addr'])
+                
             if len(infds) > 0:
                 if self.lsock in infds:
                     connection, address = self.lsock.accept()
@@ -93,9 +96,13 @@ class dis_node:
                 for rcv_sock in infds:
                     try:
                         buf = rcv_sock.recv(4096)
+                        if not buf:
+                            self.__sock_close(rcv_sock)
+                            continue
+                        
                     except Exception, e:
                         print "socket recv error!", e
-                        self.sock_list.remove(rcv_sock)
+                        self.__sock_close(rcv_sock)
                         continue
                     
                     if self.parent and self.parent['sock'] == rcv_sock:
@@ -109,29 +116,29 @@ class dis_node:
                     node_info['pending_pack'] = self.rcv_msg(node_info, buf)
                     
             if len(errfds) > 0:
-                pass
+                for err_sock in errfds:
+                    self.__sock_close(err_sock)
+
 
     def handler_node_conn(self, node):
         pass
-    
     def handler_node_idle(self, node):
         pass
-    
     def handler_node_task(self, task):
         pass
-    
     def handler_node_cfg(self, cfg):
         pass
-    
+    def handler_node_close(self, node):
+        pass
     def handler_node_status(self, node, key):
         pass
-    
+
     def __send_node_obj(self, node, cmd, obj):
         obj_s = pickle.dumps(obj)
         stream = struct.pack("ii", self.cmds[cmd], MSG_HDR_LEN + len(obj_s))
         stream += obj_s
         #print "send task %d bytes" % len(stream)
-        node['sock'].send(stream)
+        self.__send_to(node, stream)
     
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)
@@ -145,7 +152,7 @@ class dis_node:
             return
         
         stream = struct.pack("ii", self.cmds["IDLE"], MSG_HDR_LEN)
-        self.parent['sock'].send(stream)
+        self.__send_to(self.parent, stream)
     
     def set_node_status(self, key, value):
         """ 通知父节点状态改变
@@ -159,22 +166,44 @@ class dis_node:
         if self.parent:
             self.__send_node_obj(self.parent, "STATUS", (key, value))
     
-    def connect(self, address):
-        parent = {}
-        sock = socket.create_connection(address, 5)
-        parent['sock'] = sock
-        parent['addr'] = address
-        parent['is_child'] = False
-        parent['pending_pack'] = None
+    def __sock_close(self, sock):
+        if sock in self.childs.keys():
+            node = self.childs[sock]
+            self.childs.pop(sock)
+        elif self.parent['sock'] == sock:
+            node = self.parent
+        else:
+            raise Exception("__sock_close: sock %d no found" % sock)
         
-        # msg header
+        node['sock'] = None
+        self.handler_node_close(node)
+        self.sock_list.remove(sock)
+        sock.close()
+
+    def __send_to(self, node, stream):
+        sock = node['sock']
+        try:
+            sock.send(stream)
+        except socket.error:
+            self.__sock_close(sock)
+    
+    def __connect(self, address):
+        self.parent = {}
+        self.parent['addr'] = address
+        self.parent['is_child'] = False
+        self.parent['pending_pack'] = None
+        self.parent['sock'] = None
+        try:
+            sock = socket.create_connection(address, 5)
+            self.parent['sock'] = sock
+            self.sock_list.append(sock)
+        except:
+            return
+
         stream = struct.pack("ii", self.cmds["CONN"], MSG_HDR_LEN + len(self.name))
-        stream += self.name
-        sock.send(stream)
+        stream += self.name  
+        self.__send_to(self.parent, stream)
         
-        self.parent = parent
-        self.sock_list.append(sock)
-  
 #node0 = dis_node("node0")
 #node1 = dis_node("i'm child" * 1000, ('localhost', 9910), 9911)
 #
