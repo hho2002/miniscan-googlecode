@@ -7,12 +7,9 @@ class engine_plugin:
     def __init__(self, name):
         self.name = name
         self.engine = None
-        self.log_lock = threading.Lock()
     
     def log(self, log):
-        self.log_lock.acquire()
-        print log
-        self.log_lock.release()
+        self.engine.log(log)
     
     def get_cfg_vaule(self, key):
         return self.engine.cfg.get_cfg_vaule(key)
