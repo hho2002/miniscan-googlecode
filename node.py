@@ -19,12 +19,11 @@ class dis_node:
         self.lport = port
         self.parent = None
         self.childs = {}
-        self.status = {"work_done":False, "busy":False}
+        self.status = {"idle":False, "busy":False}
         self.sock_list = []
         self.name = name
         self.cmds = {"CONN":1, 
                      "TASK":2, 
-                     "IDLE":3, 
                      "CFG":4, 
                      "PLUGIN":5, 
                      "STATUS":6,
@@ -54,15 +53,16 @@ class dis_node:
             node_info['name'] = msg
             self.handler_node_conn(node_info)
             
-        if hdr[0] == self.cmds["IDLE"]:
-            self.handler_node_idle(node_info)
-            
         if hdr[0] == self.cmds["CFG"]:
             self.handler_node_cfg(pickle.loads(msg))
             
         if hdr[0] == self.cmds["STATUS"]:
             key, value = pickle.loads(msg)
             print "STATUS:", key, value
+            
+            if key == "idle" and value:
+                self.handler_node_idle(node_info)
+                
             node_info[key] = value
             self.handler_node_status(node_info, key)
             
@@ -77,11 +77,12 @@ class dis_node:
         node = {}
         node['sock'] = sock
         node['addr'] = addr
-        node['pending_pack'] = None
         node['is_child'] = is_child
-        node['work_done'] = False
-        node['busy'] = False
-        node['tasks'] = set()
+        node['pending_pack'] = None     # 处理tcp拼接组包
+        node['busy'] = False            # 节点是否繁忙
+        node['idle'] = False            # 节点所有工作线程都空闲状态
+        node['tasks'] = set()           # 节点接受的任务列表 TASK_ID集合
+        node['works'] = None            # 节点接受的工作列表
         return node
 
     def server(self):
@@ -160,15 +161,7 @@ class dis_node:
     
     def set_node_cfg(self, node, cfg):
         self.__send_node_obj(node, "CFG", cfg)
-        
-    def set_node_idle(self):
-        # request for tasks
-        if not self.parent:
-            return
-        
-        stream = struct.pack("ii", self.cmds["IDLE"], MSG_HDR_LEN)
-        self.__send_to(self.parent, stream)
-    
+          
     def set_node_status(self, key, value):
         """ 通知父节点状态改变
         """

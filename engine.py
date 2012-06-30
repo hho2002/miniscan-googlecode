@@ -57,7 +57,7 @@ class engine(dis_node):
         self.queue = None
         self.plugins = {}           # 插件列表 dict key = 插件名
         self.tasks = {}             # 任务列表 dict key = task_name
-        self.pending_task = set()   # 断线节点的需重新分发的任务
+        self.pending_task = []      # 断线节点的需重新分发的任务
         self.done = False
         self.log_lock = threading.Lock()
         
@@ -85,7 +85,7 @@ class engine(dis_node):
     def __init_threads(self):
         self.queue = Queue.Queue(self.max_thread * 2)
         for i in xrange(self.max_thread):
-            thread = threading.Thread(target=self.worker_thread,
+            thread = threading.Thread(target=self.__worker_thread,
                                       args = (i,),
                                       name = "thread" + str(i))
             self.thread_pool.append(thread)
@@ -153,7 +153,10 @@ class engine(dis_node):
         # 临时放入列表，待重新分配
         for task_id in node['tasks']:
             task = self.__id_to_task(task_id)
-            self.pending_task.add(task)
+            self.pending_task.append(task)
+        
+        if node['works']:
+            self.pending_task.append(node['works'])
         
     def handler_node_conn(self, node):
         """ 发送配置给节点
@@ -168,15 +171,19 @@ class engine(dis_node):
         """ 接受到节点任务
         """       
         if isinstance(task, list):
-            print "RCV task:", len(task)
+            print "RCV task num:", len(task)
             for work in task:
                 if self.queue.full():
                     self.set_node_status("busy", True)
 
-                self.queue.put(work)
+                work_done_evt = None
+                if work == task[-1]:
+                    work_done_evt = (self.__works_done, None)
+                    
+                self.queue.put((work, work_done_evt))
             print "RCV task DONE"
         else:
-            print "RCV task obj:", task.id
+            print "RCV task id:", task.id
             self.tasks[task.id] = task
     
     def handler_node_status(self, node, key):
@@ -194,6 +201,11 @@ class engine(dis_node):
         #print "handler_node_idle: tasks " , task.get_task_count()
         if len(self.pending_task) > 0:
             child_task = self.pending_task.pop()
+            if isinstance(child_task, list):
+                assert node['works'] == None
+                node['works'] = child_task
+                self.set_node_task(node, child_task)
+                return
         else:
             task = self.tasks['task0']
             try:
@@ -208,36 +220,50 @@ class engine(dis_node):
                                 查询空闲子节点
         """
         for node in self.childs.values():
-            if not node['busy']:
+            if not node['busy'] and not node['works'] and len(node['tasks']) == 0:
                 work = []
                 while len(work) < self.queue.maxsize:
                     try:
-                        work.append(self.queue.get(timeout = 1))
+                        work.append(self.queue.get(timeout = 1)[0])
                     except:
                         break
-                    
+                
+                node['works'] = work
                 self.set_node_task(node, work)
+                break
     
-    def worker_thread(self, thread_id):
+    def __works_done(self, obj):
+        if isinstance(obj, base_task):
+            self.set_node_status("done_id", obj.id)
+        else:
+            self.set_node_status("works", None)
+    
+    def __worker_thread(self, thread_id):
         """ 任务分发线程
         """
         while True:
             try:
-                task, plugin = self.queue.get(timeout = 1)
+                work, work_done_evt = self.queue.get(timeout = 1)
+                task, plugin = work
                 
                 try:
                     self.thread_idle.remove(thread_id)
                 except: pass
                 
-                self.set_node_status("work_done", False)
+                self.set_node_status("idle", False)
                 
                 task = (self.name, task)
                 self.plugins[plugin].handle_task(task)
+                
+                if work_done_evt:
+                    func, argv = work_done_evt
+                    func(argv)
+
             except Queue.Empty:
                 self.thread_idle.add(thread_id)
                 
                 if len(self.thread_idle) == self.max_thread:
-                    self.set_node_status("work_done", True)
+                    self.set_node_status("idle", True)
                 
                 if not self.parent and self.done:
                     break
@@ -248,12 +274,11 @@ class engine(dis_node):
         self.__init_threads()
         self.done = False
         while True:
-            all_done = self.status["work_done"]
+            all_done = self.status['idle']
             
             # test pending_task
             if all_done and len(self.pending_task) > 0:
-                pending_task = self.pending_task.pop()
-                self.tasks[pending_task.id] = pending_task
+                self.handler_node_task(self.pending_task.pop())
                 all_done = False
                 
             for task in self.tasks.values():
@@ -264,31 +289,29 @@ class engine(dis_node):
                     continue
 
                 try:
-                    self.queue.put(task.move_next())
-                except Exception, e:
-                    print "task %d done! %s" % (task.id, e)
-                    self.set_node_status("done_id", task.id)
+                    work = task.move_next()
+                    work_done_evt = None
                     
+                    if task.get_task_count() == 0:
+                        work_done_evt = (self.__works_done, task)
+                    
+                    self.queue.put((work, work_done_evt))
+                except: pass
+                
             # test node busy
             if self.queue.full():
                 self.set_node_status("busy", True)
                 self.__try_push_work()
-                #time.sleep(2)
             elif self.queue.qsize() < self.queue.maxsize/2:
                 self.set_node_status("busy", False)
-                
-            if self.parent and self.queue.empty():
-                self.set_node_idle()
-                time.sleep(2)
-                continue
             
             #test for child work done
             for child in self.childs.values():
-                if not child["work_done"]:
+                if not child['idle']:
                     all_done = False
                     break
 
-            if len(self.thread_idle) == self.max_thread and all_done:
+            if all_done and not self.parent:
                 break
             
         self.done = True
