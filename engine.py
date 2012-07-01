@@ -3,8 +3,9 @@ import re, struct
 import threading
 import Queue
 import copy
+import StringIO
+import socket
 
-from socket import *
 from node import *
 from task import *
 from crawler import web_crawler
@@ -14,10 +15,12 @@ class cfg_file_parser:
     key_pattern = re.compile(r'\s*(\w+)\s*=\s*([^#]+)')
     vaule_pattern = re.compile(r'\s*([^#\r\n]+)')
     
-    def __init__(self, filename):
+    def __init__(self, filename, fp = None):
         self.key_dict = {}
         key = value = ""
-        fp = open(filename, 'r')
+        
+        if not fp:
+            fp = open(filename, 'r')
         
         while True:
             buf = fp.readline()
@@ -123,8 +126,12 @@ class engine(dis_node):
         dis_node.log(self, log)
         self.log_lock.release()
     
-    def load_task(self, filename):
-        cfg = cfg_file_parser(filename)
+    def load_task(self, filename, context=None):
+        if context:
+            print "load_task:", filename
+            cfg = cfg_file_parser(filename, StringIO.StringIO(context))
+        else:
+            cfg = cfg_file_parser(filename)
         
         self.cfg = cfg
         
@@ -137,7 +144,31 @@ class engine(dis_node):
         if len(plugins[1]) > 0:
             web_task = web_crawler(cfg.get_cfg_vaule("web_host"), plugins[1])
             self.tasks['task1'] = web_task
+        
+    def handler_query(self):
+        """ 查询任务状态
+        """
+        tasks_info = ''
+        for key in self.tasks.keys():
+            if isinstance(key, str):
+                task = self.tasks[key]
+                if not task.current:
+                    continue
+                
+                if isinstance(task, node_task):
+                    ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
+                    info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
+                        (key, task.id, task.get_task_count(), ip)
+                else: 
+                    info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
+                        (key, task.id, task.get_task_count(), task.current)
+                tasks_info += info
+                
+        if not tasks_info:
+            tasks_info = 'NULL TASKS\n'
             
+        return tasks_info
+    
     def handler_node_log(self, node, msg):
         self.log(node['addr'][0] + "\t" + msg)
     
@@ -220,7 +251,10 @@ class engine(dis_node):
                                 查询空闲子节点
         """
         for node in self.childs.values():
-            if not node['busy'] and not node['works'] and len(node['tasks']) == 0:
+            if not node['busy'] \
+                and not node['works'] \
+                and len(node['tasks']) == 0 \
+                and node['name']:
                 work = []
                 while len(work) < self.queue.maxsize:
                     try:
@@ -311,8 +345,8 @@ class engine(dis_node):
                     all_done = False
                     break
 
-            if all_done and not self.parent:
-                break
+#            if all_done and not self.parent:
+#                break
             
         self.done = True
         # print self.pending_task, self.status["work_done"]
@@ -321,12 +355,11 @@ class engine(dis_node):
         for thead in self.thread_pool:
             threading.Thread.join(thead)
             
-server = engine()
-server.load_task("task.txt")
-threading.Thread(target=server.run).start()
-
-child = engine("node2.ini")
-child.run()
-
-while True:
-    pass
+if __name__ == '__main__':
+    server = engine()
+    server.run()
+    #server.load_task("task.txt")
+    #threading.Thread(target=server.run).start()
+    
+    child = engine("node2.ini")
+    child.run()

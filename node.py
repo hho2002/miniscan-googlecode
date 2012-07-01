@@ -28,6 +28,8 @@ class dis_node:
                      "PLUGIN":5, 
                      "STATUS":6,
                      "LOG":7,
+                     "CLIENT_ADD":8,
+                     "CLIENT_QUERY_TASK":9,
                      "MAX":10}
 
         if parent:
@@ -69,6 +71,13 @@ class dis_node:
         if hdr[0] == self.cmds["TASK"]:
             self.handler_node_task(pickle.loads(msg))
         
+        if hdr[0] == self.cmds["CLIENT_ADD"]:
+            name, context = msg.split('\0')
+            self.load_task(name, context)
+            
+        if hdr[0] == self.cmds["CLIENT_QUERY_TASK"]:
+            self.__send_to(node_info, self.handler_query())
+        
         buf = buf[hdr[1]:]
         
         return self.rcv_msg(node_info, buf)
@@ -83,6 +92,7 @@ class dis_node:
         node['idle'] = False            # 节点所有工作线程都空闲状态
         node['tasks'] = set()           # 节点接受的任务列表 TASK_ID集合
         node['works'] = None            # 节点接受的工作列表
+        node['name'] = ''
         return node
 
     def server(self):

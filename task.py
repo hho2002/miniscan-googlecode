@@ -1,7 +1,7 @@
 # -*- coding: gb2312 -*-
 import re, struct
 import threading
-from socket import *
+import socket
 
 class engine_plugin:
     def __init__(self, name):
@@ -88,12 +88,12 @@ class host_seg:
             seg_math = self.ip_pattern.match(ip)
             
             if seg_math:
-                ip1 = struct.unpack("I", inet_aton(seg_math.group(1)))[0]
-                ip2 = struct.unpack("I", inet_aton(seg_math.group(2)))[0]
-                self.append(ntohl(ip1), ntohl(ip2))
+                ip1 = struct.unpack("I", socket.inet_aton(seg_math.group(1)))[0]
+                ip2 = struct.unpack("I", socket.inet_aton(seg_math.group(2)))[0]
+                self.append(socket.ntohl(ip1), socket.ntohl(ip2))
             else:
-                ip1 = struct.unpack("I", inet_aton(ip))[0]
-                self.append(ntohl(ip1))
+                ip1 = struct.unpack("I", socket.inet_aton(ip))[0]
+                self.append(socket.ntohl(ip1))
                 
             offset = m.end()
         
@@ -190,7 +190,7 @@ class node_task(base_task):
             plugin = self.plugin[pos:]
             self.plugin = self.plugin[:pos]
 
-            ip = inet_ntoa(struct.pack("I", htonl(self.hosts.current_host)))
+            ip = socket.inet_ntoa(struct.pack("I", socket.htonl(self.hosts.current_host)))
             child = node_task(ip, plugin)
             
         self.childs[child.id] = child

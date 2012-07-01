@@ -1,13 +1,65 @@
-from engine import *
-import os
+# -*- coding: gb2312 -*-
+import os, sys
+import msvcrt, time
+import socket, struct
 
-enginex = engine()
+MSG_HDR_LEN = struct.calcsize("ii")
 
-try:
-    enginex.load_task("setting.txt")
-    enginex.run()
-    print "[*] ----- enjoy python by boywhp -----"
-    os.system("pause")
-except:
-    print "please check setting.txt or plugin for error!!!"
+CLIENT_ADD_CMD = 8
+CLIENT_QUERY_TASK = 9
+
+cmd_list = ["add", "pause", "task", "nodes", "help", "exit"]
+
+client = socket.create_connection(('localhost', 9910))
+
+def send_msg(sock, cmd, msg):
+    stream = struct.pack("ii", cmd, MSG_HDR_LEN + len(msg))
+    stream += msg
+    sock.send(stream)
     
+def __show_help():
+    print "Esc to entry cmd! cmd list[add exit]\n"
+    
+def update_tasks():
+    """ 刷新任务列表状态
+    """
+    __show_help()
+    send_msg(client, CLIENT_QUERY_TASK, '')
+    msg = client.recv(4096)
+    print msg
+    #sys.stdout.write("\r")
+
+def add_task(name):
+    print name, client
+    f = open(name)
+    send_msg(client, CLIENT_ADD_CMD, name + '\0' + f.read())
+    f.close()
+
+while True:
+    if not msvcrt.kbhit():
+        os.system('cls')
+        update_tasks()
+        time.sleep(1)
+        continue
+    
+    key = msvcrt.getch()
+    if key == chr(27):
+        cmd = raw_input("\n>>>").split(" ")# msvcrt.getch()
+        if cmd[0] == "exit":
+            break
+        
+        if cmd[0] == "add":
+            add_task(cmd[1])
+        
+os.system("pause")
+#Tkinter._test()
+#enginex = engine()
+#
+#try:
+#    enginex.load_task("setting.txt")
+#    enginex.run()
+#    print "[*] ----- enjoy python by boywhp -----"
+#    os.system("pause")
+#except:
+#    print "please check setting.txt or plugin for error!!!"
+#    
