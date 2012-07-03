@@ -19,6 +19,7 @@ class cfg_file_parser:
     
     def __init__(self, filename, fp = None):
         self.key_dict = {}
+        self.task = ""          # 对应的任务名称
         key = value = ""
         
         if not fp:
@@ -56,31 +57,32 @@ class cfg_file_parser:
 
 class engine(dis_node):
     def __init__(self, ini_file = "node.ini"):
-        self.cfg = cfg_file_parser(ini_file)
+        cfg = cfg_file_parser(ini_file)
         self.thread_pool = []
         self.thread_idle = set()    # 空闲线程列表
         self.queue = None
         self.plugins = {}           # 插件列表 dict key = 插件名
-        self.tasks = {}             # 任务列表 dict key = task_name
+        self.tasks = {}             # 任务列表 dict key = task_id
         self.pending_task = []      # 断线节点的需重新分发的任务
+        self.cfgs = {}              # 每个任务的配置文件    key  = task_name
         self.done = False
         self.log_lock = threading.Lock()
         
         try:
-            self.max_thread = int(self.cfg.get_cfg_vaule("maxthread"))
+            self.max_thread = int(cfg.get_cfg_vaule("maxthread"))
         except:
             self.max_thread = 10
         
         # init dis_node
-        name = self.cfg.get_cfg_vaule("node_id")
-        port = self.cfg.get_cfg_vaule("node_port")
+        name = cfg.get_cfg_vaule("node_id")
+        port = cfg.get_cfg_vaule("node_port")
         
         if not port:
             port = DEFAULT_NODE_PORT
         else:
             port = int(port)
             
-        parent = self.cfg.get_cfg_vaule("node_parent")
+        parent = cfg.get_cfg_vaule("node_parent")
         if parent:
             parent = parent.split(":")
             parent = (parent[0], int(parent[1]))
@@ -102,6 +104,8 @@ class engine(dis_node):
         
         try:
             plugins = cfg.get_cfg_vaule("plugin").split(" ")
+        except: pass
+        try:
             web_plugins = cfg.get_cfg_vaule("web_plugin").split(" ")
         except: pass
         
@@ -143,9 +147,8 @@ class engine(dis_node):
             cfg = cfg_file_parser(filename)
         
         task_name = filename.split('.')[0]
-        
-        self.cfg = cfg
-        
+        cfg.task = task_name
+        self.cfgs[task_name] = cfg
         plugins = self.__init_plugins(cfg)
         
         if len(plugins[0]) > 0:
@@ -156,25 +159,29 @@ class engine(dis_node):
             web_task = web_crawler(task_name, cfg.get_cfg_vaule("web_host"), plugins[1])
             self.tasks[web_task.id] = web_task
         
+        for child in self.childs.values():
+            if child['name']:
+                self.set_node_cfg(child, cfg)
+            
     def handler_query(self):
         """ 查询任务状态
         """
         tasks_info = ''
-        for key in self.tasks.keys():
-            if isinstance(key, str):
-                task = self.tasks[key]
-                if not task.current:
-                    continue
-                
-                if isinstance(task, node_task):
-                    ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
-                    info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
-                        (key, task.id, task.get_task_count(), ip)
-                else: 
-                    info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
-                        (key, task.id, task.get_task_count(), task.current)
-                tasks_info += info
-                
+        for task in self.tasks.values():
+            task_name = task.name
+            if not task.current:
+                continue
+            
+            if isinstance(task, node_task):
+                ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
+                info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
+                        (task_name, task.id, task.get_task_count(), ip)
+            else: 
+                info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
+                        (task_name, task.id, task.get_task_count(), task.current)
+
+            tasks_info += info
+            
         if not tasks_info:
             tasks_info = 'NULL TASKS\n'
             
@@ -205,11 +212,16 @@ class engine(dis_node):
     def handler_node_conn(self, node):
         """ 发送配置给节点
         """
-        self.set_node_cfg(node, self.cfg)
+        self.set_node_cfg(node, self.cfgs)
     
     def handler_node_cfg(self, cfg):
-        self.cfg = cfg
-        self.__init_plugins(cfg)
+        if isinstance(cfg, dict):
+            self.cfgs = cfg
+            for _cfg in self.cfgs.values():
+                self.__init_plugins(_cfg)
+        else:
+            self.cfgs[cfg.task] = cfg
+            self.__init_plugins(cfg)
     
     def handler_node_task(self, task):
         """ 接受到节点任务
@@ -252,8 +264,8 @@ class engine(dis_node):
                 return
         else:
             # 随机从任务队列中挑选一个执行任务分配
-            task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
             try:
+                task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
                 child_task = task.split(1)
             except: return
         
@@ -363,6 +375,9 @@ class engine(dis_node):
                     all_done = False
                     break
 
+            if all_done:
+                time.sleep(0.1)
+                
 #            if all_done and not self.parent:
 #                break
             
@@ -375,9 +390,10 @@ class engine(dis_node):
             
 if __name__ == '__main__':
     server = engine()
-    server.load_task("task.txt")
-    #server.run()
-    threading.Thread(target=server.run).start()
+    #server.load_task("task2.txt")
+    #server.load_task("task2.txt")
+    server.run()
+    #threading.Thread(target=server.run).start()
     
-    child = engine("node2.ini")
-    child.run()
+    #child = engine("node2.ini")
+    #child.run()

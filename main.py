@@ -8,9 +8,7 @@ MSG_HDR_LEN = struct.calcsize("ii")
 CLIENT_ADD_CMD = 8
 CLIENT_QUERY_TASK = 9
 
-cmd_list = ["add", "pause", "task", "nodes", "help", "exit"]
-
-client = socket.create_connection(('localhost', 9910))
+cmd_list = ["add", "pause", "log", "nodes", "exit"]
 
 def send_msg(sock, cmd, msg):
     stream = struct.pack("ii", cmd, MSG_HDR_LEN + len(msg))
@@ -29,13 +27,31 @@ def update_tasks():
     print msg
     #sys.stdout.write("\r")
 
+def show_log(task_name, filename = "result.log"):
+    fp = open(filename)
+    log = []
+    
+    while True:
+        buf = fp.readline()
+        if not buf:
+            break
+        item = buf.split('\t', 5)
+        if item[1] == task_name:
+            log.append(item)
+        
+    for item in sorted(log, key=lambda x:x[3]): # °´ÕÕµÚ²å¼þÅÅÐò
+        print item[3], item[2], item[0], item[4]
+
 def add_task(name):
-    print name, client
+    #print name, client
     f = open(name)
     send_msg(client, CLIENT_ADD_CMD, name + '\0' + f.read())
     f.close()
 
+client = socket.create_connection(('localhost', 9910))
+
 while True:
+    status = "tasks"
     if not msvcrt.kbhit():
         os.system('cls')
         update_tasks()
@@ -50,6 +66,10 @@ while True:
         
         if cmd[0] == "add":
             add_task(cmd[1])
+            
+        if cmd[0] == "log":
+            show_log(cmd[1])
+            msvcrt.getch()
         
 os.system("pause")
 #Tkinter._test()

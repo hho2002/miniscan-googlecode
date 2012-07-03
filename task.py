@@ -11,8 +11,9 @@ class engine_plugin:
     def log(self, task_info, log):
         self.engine.log(task_info, log)
     
-    def get_cfg_vaule(self, key):
-        return self.engine.cfg.get_cfg_vaule(key)
+    def get_cfg_vaule(self, task_info, key):
+        cfg = self.engine.cfgs[task_info['task']]
+        return cfg.get_cfg_vaule(key)
         
     def handle_task(self, task_info):
         pass

@@ -8,7 +8,7 @@ class port_plugin(engine_plugin):
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'][0])))
         self.log(task_info, "handle_task: %s" %  ip)
-        for port in self.get_cfg_vaule("ports").split(" "):
+        for port in self.get_cfg_vaule(task_info, "ports").split(" "):
             try:
                 sock = socket.create_connection((ip, int(port)), 1)
                 if sock:
