@@ -5,9 +5,9 @@ class web_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
     
-    def handle_task(self, task):
-        name , (host, url) = task
-        self.log("%s handle_task: %s %s" % (name, host, url))
+    def handle_task(self, task, task_id):
+        host, url = task
+        self.log(task_id, "handle_task: %s %s" % (host, url))
         
 def init_plugin(name):
     return web_plugin(name)

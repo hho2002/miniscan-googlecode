@@ -5,6 +5,8 @@ import Queue
 import copy
 import StringIO
 import socket
+import time
+import random
 
 from node import *
 from task import *
@@ -121,9 +123,15 @@ class engine(dis_node):
             
         raise Exception("Task id %d no found" % _id)
     
-    def log(self, log):
+    def log(self, task_id, log):
+        time_stamp = time.strftime('%Y-%m-%d %X', time.localtime(time.time()))
+        task = self.__id_to_task(task_id)
+        
         self.log_lock.acquire()
-        dis_node.log(self, log)
+        dis_node.log(self, self.name + '\t' +       # 节点名
+                            task.name + '\t' +      # 任务名
+                            time_stamp + '\t' +     # 时间戳
+                            log)
         self.log_lock.release()
     
     def load_task(self, filename, context=None):
@@ -138,12 +146,12 @@ class engine(dis_node):
         plugins = self.__init_plugins(cfg)
         
         if len(plugins[0]) > 0:
-            task = node_task(cfg.get_cfg_vaule("host"), plugins[0])
-            self.tasks['task0'] = task
+            task = node_task(filename, cfg.get_cfg_vaule("host"), plugins[0])
+            self.tasks[task.id] = task
         
         if len(plugins[1]) > 0:
-            web_task = web_crawler(cfg.get_cfg_vaule("web_host"), plugins[1])
-            self.tasks['task1'] = web_task
+            web_task = web_crawler(filename, cfg.get_cfg_vaule("web_host"), plugins[1])
+            self.tasks[web_task.id] = web_task
         
     def handler_query(self):
         """ 查询任务状态
@@ -238,7 +246,8 @@ class engine(dis_node):
                 self.set_node_task(node, child_task)
                 return
         else:
-            task = self.tasks['task0']
+            # 随机从任务队列中挑选一个执行任务分配
+            task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
             try:
                 child_task = task.split(1)
             except: return
@@ -277,7 +286,7 @@ class engine(dis_node):
         """
         while True:
             try:
-                work, work_done_evt = self.queue.get(timeout = 1)
+                task_id, work, work_done_evt = self.queue.get(timeout = 1)
                 task, plugin = work
                 
                 try:
@@ -286,8 +295,7 @@ class engine(dis_node):
                 
                 self.set_node_status("idle", False)
                 
-                task = (self.name, task)
-                self.plugins[plugin].handle_task(task)
+                self.plugins[plugin].handle_task(task, task_id)
                 
                 if work_done_evt:
                     func, argv = work_done_evt
@@ -329,7 +337,7 @@ class engine(dis_node):
                     if task.get_task_count() == 0:
                         work_done_evt = (self.__works_done, task)
                     
-                    self.queue.put((work, work_done_evt))
+                    self.queue.put((task.id, work, work_done_evt))
                 except: pass
                 
             # test node busy
@@ -357,8 +365,8 @@ class engine(dis_node):
             
 if __name__ == '__main__':
     server = engine()
+    server.load_task("task.txt")
     server.run()
-    #server.load_task("task.txt")
     #threading.Thread(target=server.run).start()
     
     child = engine("node2.ini")

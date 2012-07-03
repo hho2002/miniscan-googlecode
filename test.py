@@ -5,15 +5,14 @@ class port_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
     
-    def handle_task(self, task):
-        name, task = task
+    def handle_task(self, task, task_id):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task)))
-        self.log("%s handle_task: %s" % (name, ip))
+        self.log(task_id, "handle_task: %s" %  ip)
         for port in self.get_cfg_vaule("ports").split(" "):
             try:
                 sock = socket.create_connection((ip, int(port)), 1)
                 if sock:
-                    self.log("%s handle_task: %s %d open!" % (name, ip, int(port)))
+                    self.log(task_id, "handle_task: %s %d open!" % (ip, int(port)))
                     sock.close()
             except:
                 pass

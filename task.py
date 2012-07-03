@@ -8,18 +8,18 @@ class engine_plugin:
         self.name = name
         self.engine = None
     
-    def log(self, log):
-        self.engine.log(log)
+    def log(self, task_id, log):
+        self.engine.log(task_id, log)
     
     def get_cfg_vaule(self, key):
         return self.engine.cfg.get_cfg_vaule(key)
         
-    def handle_task(self, task):
+    def handle_task(self, task, task_id):
         pass
     
 class base_task:
     ID = 0
-    def __init__(self, plugins):
+    def __init__(self, name, plugins):
         if len(plugins) < 1:
             raise Exception("base_task no plugins")
         
@@ -30,7 +30,8 @@ class base_task:
         self.childs = {}
         self.plugin = plugins
         self.current_plugin = 0
-        self.node = None        
+        self.node = None
+        self.name = name
     def test_all_done(self):
         if not self.done:
             return False
@@ -151,8 +152,8 @@ class host_seg:
         return ret
 
 class node_task(base_task):
-    def __init__(self, hosts = None, plugins = None):
-        base_task.__init__(self, plugins)
+    def __init__(self, name = '', hosts = None, plugins = None):
+        base_task.__init__(self, name, plugins)
         
         if isinstance(hosts, host_seg):
             self.hosts = hosts
@@ -193,6 +194,7 @@ class node_task(base_task):
             ip = socket.inet_ntoa(struct.pack("I", socket.htonl(self.hosts.current_host)))
             child = node_task(ip, plugin)
             
+        child.name = self.name
         self.childs[child.id] = child
         return child
 

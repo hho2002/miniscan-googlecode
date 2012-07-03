@@ -26,8 +26,8 @@ class link_parser(HTMLParser.HTMLParser):
                         self.nodes.append(value)
                         
 class web_crawler(base_task):
-    def __init__(self, host, plugins):
-        base_task.__init__(self, plugins)
+    def __init__(self, name, host, plugins):
+        base_task.__init__(self, name, plugins)
         self.nodes = {}
         self.queue = Queue.Queue()
         self.url_count = 0
