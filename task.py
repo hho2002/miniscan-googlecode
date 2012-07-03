@@ -8,13 +8,13 @@ class engine_plugin:
         self.name = name
         self.engine = None
     
-    def log(self, task_id, log):
-        self.engine.log(task_id, log)
+    def log(self, task_info, log):
+        self.engine.log(task_info, log)
     
     def get_cfg_vaule(self, key):
         return self.engine.cfg.get_cfg_vaule(key)
         
-    def handle_task(self, task, task_id):
+    def handle_task(self, task_info):
         pass
     
 class base_task:
@@ -182,7 +182,7 @@ class node_task(base_task):
         
         if self.hosts.ip_count > 1:
             host = self.hosts.split(max(count/len(self.plugin), 1))
-            child = node_task(host, self.plugin)
+            child = node_task(self.name, host, self.plugin)
         else:
             pos = len(self.plugin) - count
             if self.get_task_count() < count:
@@ -192,9 +192,8 @@ class node_task(base_task):
             self.plugin = self.plugin[:pos]
 
             ip = socket.inet_ntoa(struct.pack("I", socket.htonl(self.hosts.current_host)))
-            child = node_task(ip, plugin)
+            child = node_task(self.name, ip, plugin)
             
-        child.name = self.name
         self.childs[child.id] = child
         return child
 

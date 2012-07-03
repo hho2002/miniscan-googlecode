@@ -123,15 +123,16 @@ class engine(dis_node):
             
         raise Exception("Task id %d no found" % _id)
     
-    def log(self, task_id, log):
+    def log(self, task_info, log):
         time_stamp = time.strftime('%Y-%m-%d %X', time.localtime(time.time()))
-        task = self.__id_to_task(task_id)
+        task_name = task_info['task']
         
         self.log_lock.acquire()
         dis_node.log(self, self.name + '\t' +       # 节点名
-                            task.name + '\t' +      # 任务名
+                            task_name + '\t' +      # 任务名
                             time_stamp + '\t' +     # 时间戳
-                            log)
+                            task_info['work'][1] + '\t' +   # 插件名
+                            log + '\n')
         self.log_lock.release()
     
     def load_task(self, filename, context=None):
@@ -141,16 +142,18 @@ class engine(dis_node):
         else:
             cfg = cfg_file_parser(filename)
         
+        task_name = filename.split('.')[0]
+        
         self.cfg = cfg
         
         plugins = self.__init_plugins(cfg)
         
         if len(plugins[0]) > 0:
-            task = node_task(filename, cfg.get_cfg_vaule("host"), plugins[0])
+            task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins[0])
             self.tasks[task.id] = task
         
         if len(plugins[1]) > 0:
-            web_task = web_crawler(filename, cfg.get_cfg_vaule("web_host"), plugins[1])
+            web_task = web_crawler(task_name, cfg.get_cfg_vaule("web_host"), plugins[1])
             self.tasks[web_task.id] = web_task
         
     def handler_query(self):
@@ -178,7 +181,9 @@ class engine(dis_node):
         return tasks_info
     
     def handler_node_log(self, node, msg):
-        self.log(node['addr'][0] + "\t" + msg)
+        self.log_lock.acquire()
+        dis_node.log(self, msg)
+        self.log_lock.release()
     
     def handler_node_close(self, node):
         """ 节点断线关闭
@@ -219,7 +224,7 @@ class engine(dis_node):
                 if work == task[-1]:
                     work_done_evt = (self.__works_done, None)
                     
-                self.queue.put((work, work_done_evt))
+                self.queue.put((work[0], work[1], work_done_evt))
             print "RCV task DONE"
         else:
             print "RCV task id:", task.id
@@ -267,7 +272,8 @@ class engine(dis_node):
                 work = []
                 while len(work) < self.queue.maxsize:
                     try:
-                        work.append(self.queue.get(timeout = 1)[0])
+                        # task_id, work
+                        work.append(self.queue.get(timeout = 1)[:2])
                     except:
                         break
                 
@@ -286,7 +292,7 @@ class engine(dis_node):
         """
         while True:
             try:
-                task_id, work, work_done_evt = self.queue.get(timeout = 1)
+                task_name, work, work_done_evt = self.queue.get(timeout = 1)
                 task, plugin = work
                 
                 try:
@@ -295,7 +301,7 @@ class engine(dis_node):
                 
                 self.set_node_status("idle", False)
                 
-                self.plugins[plugin].handle_task(task, task_id)
+                self.plugins[plugin].handle_task({'work':work, 'task':task_name})
                 
                 if work_done_evt:
                     func, argv = work_done_evt
@@ -305,8 +311,12 @@ class engine(dis_node):
                 self.thread_idle.add(thread_id)
                 
                 if len(self.thread_idle) == self.max_thread:
-                    self.set_node_status("idle", True)
-                
+                    if self.set_node_status("idle", True):
+                        self.idle_time = time.time()
+                    elif time.time() - self.idle_time > 5:
+                        self.idle_time = time.time()
+                        self.set_node_status("idle", True, force_refresh = True)
+                        
                 if not self.parent and self.done:
                     break
         
@@ -337,7 +347,7 @@ class engine(dis_node):
                     if task.get_task_count() == 0:
                         work_done_evt = (self.__works_done, task)
                     
-                    self.queue.put((task.id, work, work_done_evt))
+                    self.queue.put((task.name, work, work_done_evt))
                 except: pass
                 
             # test node busy
@@ -366,8 +376,8 @@ class engine(dis_node):
 if __name__ == '__main__':
     server = engine()
     server.load_task("task.txt")
-    server.run()
-    #threading.Thread(target=server.run).start()
+    #server.run()
+    threading.Thread(target=server.run).start()
     
     child = engine("node2.ini")
     child.run()

@@ -4,7 +4,7 @@ import threading, time
 import struct, StringIO
 import cPickle as pickle
 import task
-
+import sys
 #
 # --- pickle docs ---
 # http://www.ibm.com/developerworks/cn/linux/l-pypers/index.html
@@ -160,29 +160,36 @@ class dis_node:
         #print "send task %d bytes" % len(stream)
         self.__send_to(node, stream)
     
-    def log(self, log):
+    def log(self, log, filename = "result.log"):
         if self.parent:
             self.__send_node_obj(self.parent, "LOG", log)
         else:
-            print log
-            
+            sys.stdout.write(log)
+            # 写入日志文件
+            if filename:
+                fp = open(filename, 'a')
+                fp.write(log)
+                fp.close()
+                
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)
     
     def set_node_cfg(self, node, cfg):
         self.__send_node_obj(node, "CFG", cfg)
           
-    def set_node_status(self, key, value):
-        """ 通知父节点状态改变
+    def set_node_status(self, key, value, force_refresh = False):
+        """ 通知父节点状态改变 
         """
         try:
-            if self.status[key]== value:
-                return
+            if not force_refresh and self.status[key] == value:
+                return False
         except: pass
         
         self.status[key] = value
         if self.parent:
             self.__send_node_obj(self.parent, "STATUS", (key, value))
+            
+        return True
     
     def __sock_close(self, sock):
         if sock in self.childs.keys():

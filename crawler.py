@@ -128,7 +128,7 @@ class web_crawler(base_task):
         return (host, url)
 
     def split(self, count):
-        pass
+        raise Exception("not implemented!")
     
 
 #plugins = ["plugin1", "plugin2", "plugin3"]
