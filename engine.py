@@ -61,6 +61,7 @@ class engine(dis_node):
         self.tasks = {}             # 任务列表 dict key = task_id
         self.pending_task = []      # 断线节点的需重新分发的任务
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
+        self.tasks_ref = {}         # 任务引用计数器
         self.log_lock = threading.Lock()
         
         # init dis_node
@@ -149,6 +150,7 @@ class engine(dis_node):
         except:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
 
+        self.tasks_ref[task_name] = 1
         self.tasks[task.id] = task
         for child in self.childs.values():
             if child['name']:
@@ -234,16 +236,22 @@ class engine(dis_node):
             print "RCV task DONE"
         else:
             print "RCV task id:", task.id
+            self.tasks_ref[task.name] = 1
             self.tasks[task.id] = task
     
-    def handler_node_status(self, node, key):
-        """ 节点状态发生变化
+    def handler_node_status(self, node, key, value):
+        """ 节点状态即将发生变化
         """
         if key == "done_id":
-            task = self.__id_to_task(node[key])
+            task = self.__id_to_task(value)
             node['tasks'].remove(task.id)
+            self.tasks_ref[task.name] -= 1
             task.done = True
-    
+        
+        if key == "works" and value == None:
+            for task_name, work in node['works']:
+                self.tasks_ref[task_name] -= 1
+        
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
             1、一次分配一段ip
@@ -263,6 +271,7 @@ class engine(dis_node):
                 child_task = task.split(1)
             except: return
         
+        self.tasks_ref[child_task.name] += 1
         node['tasks'].add(child_task.id)
         self.set_node_task(node, child_task)
         
@@ -275,21 +284,24 @@ class engine(dis_node):
                 and not node['works'] \
                 and len(node['tasks']) == 0 \
                 and node['name']:
-                work = []
-                while len(work) < self.queue.maxsize:
+                works = []
+                while len(works) < self.queue.maxsize:
                     try:
                         # task_id, work
-                        work.append(self.queue.get(timeout = 1)[:2])
+                        task_name, work = self.queue.get(timeout = 1)[:2]
+                        works.append((task_name, work))
+                        self.tasks_ref[task_name] += 1
                     except:
                         break
                 
-                node['works'] = work
-                self.set_node_task(node, work)
+                node['works'] = works
+                self.set_node_task(node, works)
                 break
     
     def __works_done(self, obj):
         if isinstance(obj, base_task):
             self.set_node_status("done_id", obj.id)
+            self.tasks_ref[obj.name] -= 1
         else:
             self.set_node_status("works", None)
     
@@ -322,26 +334,22 @@ class engine(dis_node):
                     elif time.time() - self.idle_time > 5:
                         self.idle_time = time.time()
                         self.set_node_status("idle", True, force_refresh = True)
-        
+
     def __run(self):
         self.__init_threads()
         while True:
-            all_done = self.status['idle']
-            if all_done:
-                time.sleep(0.1)
-                
-            # test pending_task
-            if all_done and len(self.pending_task) > 0:
-                self.handler_node_task(self.pending_task.pop())
-                all_done = False
-                
+            if self.status['idle']:                
+                # test pending_task
+                if len(self.pending_task) > 0:
+                    self.handler_node_task(self.pending_task.pop())
+                else:
+                    time.sleep(0.1)
+
             for key in self.tasks.keys():
                 task = self.tasks[key]
-                if not task.test_all_done():
-                    all_done = False
-                elif all_done:
+                if self.tasks_ref[task.name] <= 0 and not self.parent:
                     # remove all tasks resources
-                    print "remove task:", task.name
+                    print "!!!!remove task:", task.name
                     self.cfgs.pop(task.name)
                     self.tasks.pop(key)
                     

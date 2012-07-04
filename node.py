@@ -65,8 +65,8 @@ class dis_node:
             if key == "idle" and value:
                 self.handler_node_idle(node_info)
                 
+            self.handler_node_status(node_info, key, value)
             node_info[key] = value
-            self.handler_node_status(node_info, key)
             
         if hdr[0] == self.cmds["TASK"]:
             self.handler_node_task(pickle.loads(msg))
@@ -150,7 +150,7 @@ class dis_node:
         pass
     def handler_node_close(self, node):
         pass
-    def handler_node_status(self, node, key):
+    def handler_node_status(self, node, key, value):
         pass
 
     def __send_node_obj(self, node, cmd, obj):
