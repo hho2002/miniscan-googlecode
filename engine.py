@@ -50,44 +50,40 @@ class cfg_file_parser:
         fp.close()
         
     def get_cfg_vaule(self, key):
-        try:
-            return self.key_dict[key]
-        except:
-            return None
+        return self.key_dict[key]
 
 class engine(dis_node):
     def __init__(self, ini_file = "node.ini"):
         cfg = cfg_file_parser(ini_file)
-        self.thread_pool = []
         self.thread_idle = set()    # 空闲线程列表
-        self.queue = None
+        self.queue = None           # 多线程调度work队列
         self.plugins = {}           # 插件列表 dict key = 插件名
         self.tasks = {}             # 任务列表 dict key = task_id
         self.pending_task = []      # 断线节点的需重新分发的任务
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
-        self.done = False
         self.log_lock = threading.Lock()
         
+        # init dis_node
+        name = cfg.get_cfg_vaule("node_id")
         try:
             self.max_thread = int(cfg.get_cfg_vaule("maxthread"))
         except:
             self.max_thread = 10
-        
-        # init dis_node
-        name = cfg.get_cfg_vaule("node_id")
-        port = cfg.get_cfg_vaule("node_port")
-        
-        if not port:
+        try:
+            port = int(cfg.get_cfg_vaule("node_port"))
+        except:
             port = DEFAULT_NODE_PORT
-        else:
-            port = int(port)
             
-        parent = cfg.get_cfg_vaule("node_parent")
-        if parent:
-            parent = parent.split(":")
+        try:
+            parent = cfg.get_cfg_vaule("node_parent").split(":")
             parent = (parent[0], int(parent[1]))
-            
+        except:
+            parent = None
+        
         dis_node.__init__(self, name, parent, port)
+        
+        # start main running thread
+        threading.Thread(target=self.__run).start()
         
     def __init_threads(self):
         self.queue = Queue.Queue(self.max_thread * 2)
@@ -95,28 +91,24 @@ class engine(dis_node):
             thread = threading.Thread(target=self.__worker_thread,
                                       args = (i,),
                                       name = "thread" + str(i))
-            self.thread_pool.append(thread)
             thread.setDaemon(0)
             thread.start()
     
     def __init_plugins(self, cfg):
-        web_plugins = plugins = []
+        plugins = []
         
         try:
             plugins = cfg.get_cfg_vaule("plugin").split(" ")
         except: pass
-        try:
-            web_plugins = cfg.get_cfg_vaule("web_plugin").split(" ")
-        except: pass
         
-        for plugin_name in set(plugins + web_plugins):
+        for plugin_name in set(plugins):
             module = __import__(plugin_name)
 
             plugin = module.init_plugin(plugin_name)
             plugin.engine = self
             self.plugins[plugin_name] = plugin
             
-        return (plugins, web_plugins)
+        return plugins
     
     def __id_to_task(self, _id):
         for task in self.tasks.values():
@@ -151,14 +143,13 @@ class engine(dis_node):
         self.cfgs[task_name] = cfg
         plugins = self.__init_plugins(cfg)
         
-        if len(plugins[0]) > 0:
-            task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins[0])
-            self.tasks[task.id] = task
-        
-        if len(plugins[1]) > 0:
-            web_task = web_crawler(task_name, cfg.get_cfg_vaule("web_host"), plugins[1])
-            self.tasks[web_task.id] = web_task
-        
+        # 不允许混合加载web和host扫描
+        try:
+            task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins)
+        except:
+            task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
+
+        self.tasks[task.id] = task
         for child in self.childs.values():
             if child['name']:
                 self.set_node_cfg(child, cfg)
@@ -174,11 +165,12 @@ class engine(dis_node):
             
             if isinstance(task, node_task):
                 ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
-                info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
+                info = "\nNAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
                         (task_name, task.id, task.get_task_count(), ip)
-            else: 
-                info = "NAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
-                        (task_name, task.id, task.get_task_count(), task.current)
+            else:
+                url, all_url = task.get_process_info()
+                info = "\nNAME:%s\tID:%d\tREMAIN:%d/%d\nCURRENT: %s\n" % \
+                        (task_name, task.id, url, all_url, task.current)
 
             tasks_info += info
             
@@ -216,10 +208,12 @@ class engine(dis_node):
     
     def handler_node_cfg(self, cfg):
         if isinstance(cfg, dict):
+            print "RCV CFGS", len(cfg)
             self.cfgs = cfg
             for _cfg in self.cfgs.values():
                 self.__init_plugins(_cfg)
         else:
+            print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
     
@@ -328,26 +322,28 @@ class engine(dis_node):
                     elif time.time() - self.idle_time > 5:
                         self.idle_time = time.time()
                         self.set_node_status("idle", True, force_refresh = True)
-                        
-                if not self.parent and self.done:
-                    break
         
-        #print threading.current_thread().name, " worker exiting !!!"
-        
-    def run(self):
+    def __run(self):
         self.__init_threads()
-        self.done = False
         while True:
             all_done = self.status['idle']
-            
+            if all_done:
+                time.sleep(0.1)
+                
             # test pending_task
             if all_done and len(self.pending_task) > 0:
                 self.handler_node_task(self.pending_task.pop())
                 all_done = False
                 
-            for task in self.tasks.values():
+            for key in self.tasks.keys():
+                task = self.tasks[key]
                 if not task.test_all_done():
                     all_done = False
+                elif all_done:
+                    # remove all tasks resources
+                    print "remove task:", task.name
+                    self.cfgs.pop(task.name)
+                    self.tasks.pop(key)
                     
                 if task.done:
                     continue
@@ -369,30 +365,11 @@ class engine(dis_node):
             elif self.queue.qsize() < self.queue.maxsize/2:
                 self.set_node_status("busy", False)
             
-            #test for child work done
-            for child in self.childs.values():
-                if not child['idle']:
-                    all_done = False
-                    break
-
-            if all_done:
-                time.sleep(0.1)
-                
-#            if all_done and not self.parent:
-#                break
-            
-        self.done = True
-        # print self.pending_task, self.status["work_done"]
-        self.log(self.name + " main scan thread exiting !!!")
-        #wait for all thread exit
-        for thead in self.thread_pool:
-            threading.Thread.join(thead)
-            
 if __name__ == '__main__':
     server = engine()
-    #server.load_task("task2.txt")
-    #server.load_task("task2.txt")
-    server.run()
+#    server.load_task("task.txt")
+#    server.load_task("task2.txt")
+    #server.run()
     #threading.Thread(target=server.run).start()
     
     #child = engine("node2.ini")

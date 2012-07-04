@@ -65,6 +65,7 @@ class web_crawler(base_task):
 #        
 #        print urlparse.urlparse(url).path
         
+        self.url_count += 1
         req = urllib2.Request(url)
         #req.add_header("Accept-Charset", "utf-8;")
         req.add_header("Accept-Encoding", "gzip, deflate")
@@ -86,7 +87,6 @@ class web_crawler(base_task):
             print "http err:", http_err.code
             return
         
-        self.url_count += 1
         html_parser = link_parser()
         
         try:
@@ -108,6 +108,10 @@ class web_crawler(base_task):
             return 0
         
         return count
+    
+    def get_process_info(self):
+        return (self.url_count, len(self.nodes))
+    
     def handler_next(self):
         if self.queue.empty():
             self.current_host += 1

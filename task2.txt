@@ -1,7 +1,7 @@
 # web hosts
-web_plugin = web_test
+plugin = web_test
 
-web_host =
+webs =
 #http://172.16.16.99/
 #http://172.16.16.6/
 #http://192.168.1.1/

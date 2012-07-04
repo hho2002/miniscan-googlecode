@@ -24,4 +24,4 @@ setup(  name = "main",
         version = "0.1",
         description = "console application!",
         options = {"build_exe": build_exe_options},
-        executables = [Executable("main.py", base = "Console")])
+        executables = [Executable("engine.py", base = "Console")])
