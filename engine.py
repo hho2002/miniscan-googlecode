@@ -167,8 +167,8 @@ class engine(dis_node):
             
             if isinstance(task, node_task):
                 ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
-                info = "\nNAME:%s\tID:%d\tREMAIN:%d\nCURRENT: %s\n" % \
-                        (task_name, task.id, task.get_task_count(), ip)
+                info = "\nNAME:%s\tID:%d\tREMAIN:%d\tREF:%d\nCURRENT: %s\n" % \
+                        (task_name, task.id, task.get_task_count(), self.tasks_ref[task_name], ip)
             else:
                 url, all_url = task.get_process_info()
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d/%d\nCURRENT: %s\n" % \
@@ -218,6 +218,10 @@ class engine(dis_node):
             print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
+            
+    def handler_node_task_del(self, task_name):
+        print "RCV TASK DEL", task_name
+        self.__remove_task(task_name)
     
     def handler_node_task(self, task):
         """ 接受到节点任务
@@ -303,7 +307,7 @@ class engine(dis_node):
             self.set_node_status("done_id", obj.id)
             self.tasks_ref[obj.name] -= 1
         else:
-            self.set_node_status("works", None)
+            self.set_node_status("works", None, force_refresh = True)
     
     def __worker_thread(self, thread_id):
         """ 任务分发线程
@@ -335,6 +339,17 @@ class engine(dis_node):
                         self.idle_time = time.time()
                         self.set_node_status("idle", True, force_refresh = True)
 
+    def __remove_task(self, task_name):
+        """ 父节点向子节点发布删除task命令
+        """
+        # remove all tasks resources
+        try:
+            self.cfgs.pop(task_name)
+            print "!!!!remove task:", task_name
+            for child in self.childs.values():
+                self.del_node_task(child, task_name)
+        except: pass
+        
     def __run(self):
         self.__init_threads()
         while True:
@@ -347,12 +362,12 @@ class engine(dis_node):
 
             for key in self.tasks.keys():
                 task = self.tasks[key]
-                if self.tasks_ref[task.name] <= 0 and not self.parent:
-                    # remove all tasks resources
-                    print "!!!!remove task:", task.name
-                    self.cfgs.pop(task.name)
+                if self.tasks_ref[task.name] <= 0:
+                    if not self.parent:
+                        self.__remove_task(task.name)
                     self.tasks.pop(key)
-                    
+                    continue
+                
                 if task.done:
                     continue
 

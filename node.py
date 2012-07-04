@@ -24,6 +24,7 @@ class dis_node:
         self.name = name
         self.cmds = {"CONN":1, 
                      "TASK":2, 
+                     "DEL_TASK":3,
                      "CFG":4, 
                      "PLUGIN":5, 
                      "STATUS":6,
@@ -70,7 +71,8 @@ class dis_node:
             
         if hdr[0] == self.cmds["TASK"]:
             self.handler_node_task(pickle.loads(msg))
-        
+        if hdr[0] == self.cmds["DEL_TASK"]:
+            self.handler_node_task_del(pickle.loads(msg))
         if hdr[0] == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
@@ -146,6 +148,8 @@ class dis_node:
         pass
     def handler_node_task(self, task):
         pass
+    def handler_node_task_del(self, task_name):
+        pass
     def handler_node_cfg(self, cfg):
         pass
     def handler_node_close(self, node):
@@ -170,13 +174,13 @@ class dis_node:
                 fp = open(filename, 'a')
                 fp.write(log)
                 fp.close()
-                
+
+    def del_node_task(self, node, name):
+        self.__send_node_obj(node, "DEL_TASK", name)
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)
-    
     def set_node_cfg(self, node, cfg):
         self.__send_node_obj(node, "CFG", cfg)
-          
     def set_node_status(self, key, value, force_refresh = False):
         """ 通知父节点状态改变 
         """

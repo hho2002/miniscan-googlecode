@@ -1,0 +1,32 @@
+----------------------------------------------------------------------------
+some important data flow
+----------------------------------------------------------------------------
+1¡¢handler_node_idle
+    child_task = task.split(1)
+	set_node_task(node, child_task)
+	  handler_node_task
+	    self.tasks[task.id] = task
+		__run if task.get_task_count() == 0: 
+                   self.__works_done
+			set_node_status("done_id", obj.id)
+			   handler_node_status
+				node['tasks'].remove(task.id)	<-
+				task.done = True		<-
+
+2¡¢__try_push_work
+    node['works'] = work
+    set_node_task(node, work)
+	handler_node_task
+	  self.queue.put((work[0], work[1], work_done_evt)) ->__works_done
+		__works_done
+		   self.set_node_status("works", None)
+			node.rcv_msg->node['works'] = None
+
+----------------------------------------------------------------------------
+some important struct
+----------------------------------------------------------------------------
+current, plugin = work
+self.queue.put((task.name, work, work_done_evt))
+node['works'] = [(task.name, work), ...]
+plugin_task_info = {'work':work, 'task':task_name}
+
