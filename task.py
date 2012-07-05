@@ -31,7 +31,7 @@ class base_task:
         self.childs = {}
         self.plugin = plugins
         self.current_plugin = 0
-        self.node = None
+        self.node = None            # 该任务来自的节点
         self.name = name
     def test_all_done(self):
         if not self.done:

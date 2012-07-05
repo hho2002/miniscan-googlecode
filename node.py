@@ -18,7 +18,7 @@ class dis_node:
         self.lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.lport = port
         self.parent = None
-        self.childs = {}
+        self.nodes = {}
         self.status = {"idle":False, "busy":False}
         self.sock_list = []
         self.name = name
@@ -39,7 +39,7 @@ class dis_node:
         self.server_thread = threading.Thread(target=self.server)
         self.server_thread.start()
         
-    def rcv_msg(self, node_info, buf):
+    def rcv_msg(self, node, buf):
         if len(buf) < MSG_HDR_LEN:
             return buf
 
@@ -50,45 +50,45 @@ class dis_node:
         msg = buf[MSG_HDR_LEN:hdr[1]]
         
         if hdr[0] == self.cmds["LOG"]:
-            self.handler_node_log(node_info, pickle.loads(msg))
+            self.handler_node_log(node, pickle.loads(msg))
             
         if hdr[0] == self.cmds["CONN"]:
-            node_info['name'] = msg
-            self.handler_node_conn(node_info)
+            node['name'] = msg
+            self.__send_node_obj(node, "STATUS", ('name', self.name))
+            self.handler_node_conn(node)
             
         if hdr[0] == self.cmds["CFG"]:
-            self.handler_node_cfg(pickle.loads(msg))
+            self.handler_node_cfg(node, pickle.loads(msg))
             
         if hdr[0] == self.cmds["STATUS"]:
             key, value = pickle.loads(msg)
             print "STATUS:", key, value
             
             if key == "idle" and value:
-                self.handler_node_idle(node_info)
+                self.handler_node_idle(node)
                 
-            self.handler_node_status(node_info, key, value)
-            node_info[key] = value
+            self.handler_node_status(node, key, value)
+            node[key] = value
             
         if hdr[0] == self.cmds["TASK"]:
-            self.handler_node_task(pickle.loads(msg))
+            self.handler_node_task(node, pickle.loads(msg))
         if hdr[0] == self.cmds["DEL_TASK"]:
-            self.handler_node_task_del(pickle.loads(msg))
+            self.handler_node_task_del(node, pickle.loads(msg))
         if hdr[0] == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
             
         if hdr[0] == self.cmds["CLIENT_QUERY_TASK"]:
-            self.__send_to(node_info, self.handler_query())
+            self.__send_to(node, self.handler_query())
         
         buf = buf[hdr[1]:]
         
-        return self.rcv_msg(node_info, buf)
+        return self.rcv_msg(node, buf)
     
-    def __init_node_info(self, sock, addr, is_child = True):
+    def __init_node_info(self, sock, addr):
         node = {}
         node['sock'] = sock
         node['addr'] = addr
-        node['is_child'] = is_child
         node['pending_pack'] = None     # 处理tcp拼接组包
         node['busy'] = False            # 节点是否繁忙
         node['idle'] = False            # 节点所有工作线程都空闲状态
@@ -110,7 +110,7 @@ class dis_node:
             if len(infds) > 0:
                 if self.lsock in infds:
                     connection, address = self.lsock.accept()
-                    self.childs[connection] = self.__init_node_info(connection, address)
+                    self.nodes[connection] = self.__init_node_info(connection, address)
                     self.sock_list.append(connection)
                     infds.remove(self.lsock)
                 
@@ -129,7 +129,7 @@ class dis_node:
                     if self.parent and self.parent['sock'] == rcv_sock:
                         node_info = self.parent
                     else:
-                        node_info = self.childs[rcv_sock]
+                        node_info = self.nodes[rcv_sock]
                     
                     if node_info['pending_pack']:
                         buf = node_info['pending_pack'] + buf
@@ -146,11 +146,11 @@ class dis_node:
         pass
     def handler_node_idle(self, node):
         pass
-    def handler_node_task(self, task):
+    def handler_node_task(self, node, task):
         pass
-    def handler_node_task_del(self, task_name):
+    def handler_node_task_del(self, node, task_name):
         pass
-    def handler_node_cfg(self, cfg):
+    def handler_node_cfg(self, node, cfg):
         pass
     def handler_node_close(self, node):
         pass
@@ -181,8 +181,8 @@ class dis_node:
         self.__send_node_obj(node, "TASK", task)
     def set_node_cfg(self, node, cfg):
         self.__send_node_obj(node, "CFG", cfg)
-    def set_node_status(self, key, value, force_refresh = False):
-        """ 通知父节点状态改变 
+    def set_node_status(self, key, value, target=None, force_refresh=False):
+        """ 通知节点状态改变 
         """
         try:
             if not force_refresh and self.status[key] == value:
@@ -190,16 +190,17 @@ class dis_node:
         except: pass
         
         self.status[key] = value
-        if self.parent:
-            self.__send_node_obj(self.parent, "STATUS", (key, value))
-            
+        if target:
+            self.__send_node_obj(target, "STATUS", (key, value))
+        else:
+            for node in self.nodes.itervalues():
+                self.__send_node_obj(node, "STATUS", (key, value))
+                
         return True
     
     def __sock_close(self, sock):
-        if sock in self.childs.keys():
-            node = self.childs.pop(sock)
-        elif self.parent['sock'] == sock:
-            node = self.parent
+        if sock in self.nodes.keys():
+            node = self.nodes.pop(sock)
         else:
             raise Exception("__sock_close: sock %d no found" % sock)
         
@@ -219,7 +220,7 @@ class dis_node:
                 self.__sock_close(sock)
     
     def __connect(self, address):
-        self.parent = self.__init_node_info(None, address, is_child = False)
+        self.parent = self.__init_node_info(None, address)
         try:
             sock = socket.create_connection(address, 5)
             self.parent['sock'] = sock
@@ -227,6 +228,7 @@ class dis_node:
         except:
             return
 
+        self.nodes[sock] = self.parent
         stream = struct.pack("ii", self.cmds["CONN"], MSG_HDR_LEN + len(self.name))
         stream += self.name  
         self.__send_to(self.parent, stream)

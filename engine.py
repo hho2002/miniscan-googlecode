@@ -152,7 +152,7 @@ class engine(dis_node):
 
         self.tasks_ref[task_name] = 1
         self.tasks[task.id] = task
-        for child in self.childs.values():
+        for child in self.nodes.values():
             if child['name']:
                 self.set_node_cfg(child, cfg)
             
@@ -208,7 +208,7 @@ class engine(dis_node):
         """
         self.set_node_cfg(node, self.cfgs)
     
-    def handler_node_cfg(self, cfg):
+    def handler_node_cfg(self, node, cfg):
         if isinstance(cfg, dict):
             print "RCV CFGS", len(cfg)
             self.cfgs = cfg
@@ -219,11 +219,11 @@ class engine(dis_node):
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
             
-    def handler_node_task_del(self, task_name):
+    def handler_node_task_del(self, node, task_name):
         print "RCV TASK DEL", task_name
-        self.__remove_task(task_name)
+        self.__remove_task(node, task_name)
     
-    def handler_node_task(self, task):
+    def handler_node_task(self, node, task):
         """ 接受到节点任务
         """       
         if isinstance(task, list):
@@ -234,13 +234,18 @@ class engine(dis_node):
 
                 work_done_evt = None
                 if work == task[-1]:
-                    work_done_evt = (self.__works_done, None)
+                    work_done_evt = (self.__works_done, node)
                     
                 self.queue.put((work[0], work[1], work_done_evt))
             print "RCV task DONE"
         else:
             print "RCV task id:", task.id
-            self.tasks_ref[task.name] = 1
+            try:
+                self.tasks_ref[task.name] += 1
+            except:
+                self.tasks_ref[task.name] = 1
+                
+            task.node = node
             self.tasks[task.id] = task
     
     def handler_node_status(self, node, key, value):
@@ -283,13 +288,13 @@ class engine(dis_node):
         """ 尝试主动推送队列任务
                                 查询空闲子节点
         """
-        for node in self.childs.values():
+        for node in self.nodes.values():
             if not node['busy'] \
                 and not node['works'] \
                 and len(node['tasks']) == 0 \
                 and node['name']:
                 works = []
-                while len(works) < self.queue.maxsize:
+                while len(works) < self.queue.maxsize/2:
                     try:
                         # task_id, work
                         task_name, work = self.queue.get(timeout = 1)[:2]
@@ -303,11 +308,12 @@ class engine(dis_node):
                 break
     
     def __works_done(self, obj):
+        """ 任务完成，向任务发起者报告
+        """
         if isinstance(obj, base_task):
-            self.set_node_status("done_id", obj.id)
             self.tasks_ref[obj.name] -= 1
         else:
-            self.set_node_status("works", None, force_refresh = True)
+            self.set_node_status("works", None, target=obj, force_refresh = True)
     
     def __worker_thread(self, thread_id):
         """ 任务分发线程
@@ -339,15 +345,16 @@ class engine(dis_node):
                         self.idle_time = time.time()
                         self.set_node_status("idle", True, force_refresh = True)
 
-    def __remove_task(self, task_name):
+    def __remove_task(self, from_node, task_name):
         """ 父节点向子节点发布删除task命令
         """
         # remove all tasks resources
         try:
             self.cfgs.pop(task_name)
             print "!!!!remove task:", task_name
-            for child in self.childs.values():
-                self.del_node_task(child, task_name)
+            for node in self.nodes.values():
+                if node != from_node and node['name']:
+                    self.del_node_task(node, task_name)
         except: pass
         
     def __run(self):
@@ -363,8 +370,11 @@ class engine(dis_node):
             for key in self.tasks.keys():
                 task = self.tasks[key]
                 if self.tasks_ref[task.name] <= 0:
-                    if not self.parent:
-                        self.__remove_task(task.name)
+                    if task.node:
+                        self.set_node_status("done_id", task.id, task.node, True)
+                    else:
+                        self.__remove_task(None, task.name)
+                        
                     self.tasks.pop(key)
                     continue
                 
@@ -395,5 +405,6 @@ if __name__ == '__main__':
     #server.run()
     #threading.Thread(target=server.run).start()
     
-    #child = engine("node2.ini")
+#    child = engine("node2.ini")
+#    child.load_task("task3.txt")
     #child.run()
