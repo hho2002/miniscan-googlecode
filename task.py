@@ -48,14 +48,8 @@ class base_task:
         pass
     def get_task_count(self):
         pass
-    def get_task_by_id(self, _id):
-        if _id == self.id:
-            return self
-        
-        if _id in self.childs.keys():
-            return self.childs[_id]
-        
-        raise Exception("Task id no found")
+    def get_child_by_id(self, _id):
+        return self.childs[_id]
     def move_next(self):
         plugin = self.plugin[self.current_plugin]
         if self.current_plugin == 0:
@@ -205,12 +199,12 @@ class node_task(base_task):
 #print host2.ip_count, host2.ip_seg_list
 
 #plugins = ["plugin1", "plugin2", "plugin3"]
-#task1 = node_task("192.168.1.1-192.168.1.3\n192.168.1.4", plugins)
+#task1 = node_task('task1', "192.168.1.1-192.168.1.3\n192.168.1.4", plugins)
 #task2 = task1.split(1)
 #task3 = task1.split(1)
 #
-#print task1.get_task_by_id(task2.id), task2
-#
+#print task1.get_child_by_id(task2.id), task2
+
 #while True:
 #    try:
 #        print task1.move_next()

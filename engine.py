@@ -63,7 +63,7 @@ class engine(dis_node):
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
         self.tasks_ref = {}         # 任务引用计数器
         self.log_lock = threading.Lock()
-        
+        self.idle_time = time.time()
         # init dis_node
         name = cfg.get_cfg_vaule("node_id")
         try:
@@ -111,10 +111,10 @@ class engine(dis_node):
             
         return plugins
     
-    def __id_to_task(self, _id):
+    def __id_to_child_task(self, _id):
         for task in self.tasks.values():
             try:
-                task = task.get_task_by_id(_id)
+                task = task.get_child_by_id(_id)
                 return task
             except: pass
             
@@ -152,9 +152,9 @@ class engine(dis_node):
 
         self.tasks_ref[task_name] = 1
         self.tasks[task.id] = task
-        for child in self.nodes.values():
-            if child['name']:
-                self.set_node_cfg(child, cfg)
+        for node in self.nodes.values():
+            if node['name']:
+                self.set_node_cfg(node, cfg)
             
     def handler_query(self):
         """ 查询任务状态
@@ -197,7 +197,7 @@ class engine(dis_node):
         print "handler_node_close:", node['tasks']
         # 临时放入列表，待重新分配
         for task_id in node['tasks']:
-            task = self.__id_to_task(task_id)
+            task = self.__id_to_child_task(task_id)
             self.pending_task.append(task)
         
         if node['works']:
@@ -206,7 +206,8 @@ class engine(dis_node):
     def handler_node_conn(self, node):
         """ 发送配置给节点
         """
-        self.set_node_cfg(node, self.cfgs)
+        if len(self.cfgs) > 0:
+            self.set_node_cfg(node, self.cfgs)
     
     def handler_node_cfg(self, node, cfg):
         if isinstance(cfg, dict):
@@ -218,7 +219,12 @@ class engine(dis_node):
             print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
-            
+        
+        # 转发CFG
+        for _node in self.nodes.values():
+            if _node['name'] and _node != node:
+                self.set_node_cfg(_node, cfg)
+        
     def handler_node_task_del(self, node, task_name):
         print "RCV TASK DEL", task_name
         self.__remove_task(node, task_name)
@@ -227,7 +233,7 @@ class engine(dis_node):
         """ 接受到节点任务
         """       
         if isinstance(task, list):
-            print "RCV task num:", len(task)
+            print "%s -> %s task num:%d" % (node['name'], self.name, len(task))
             for work in task:
                 if self.queue.full():
                     self.set_node_status("busy", True)
@@ -239,7 +245,7 @@ class engine(dis_node):
                 self.queue.put((work[0], work[1], work_done_evt))
             print "RCV task DONE"
         else:
-            print "RCV task id:", task.id
+            print "%s -> %s task id:%d" % (node['name'], self.name, task.id)
             try:
                 self.tasks_ref[task.name] += 1
             except:
@@ -252,7 +258,7 @@ class engine(dis_node):
         """ 节点状态即将发生变化
         """
         if key == "done_id":
-            task = self.__id_to_task(value)
+            task = self.__id_to_child_task(value)
             node['tasks'].remove(task.id)
             self.tasks_ref[task.name] -= 1
             task.done = True
@@ -405,6 +411,8 @@ if __name__ == '__main__':
     #server.run()
     #threading.Thread(target=server.run).start()
     
-#    child = engine("node2.ini")
-#    child.load_task("task3.txt")
-    #child.run()
+#    node1 = engine("node1.ini")
+#    node2 = engine("node2.ini")
+#    node3 = engine("node3.ini")
+#    
+#    node2.load_task("task.txt")
