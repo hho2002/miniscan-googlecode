@@ -52,6 +52,14 @@ class cfg_file_parser:
     def get_cfg_vaule(self, key):
         return self.key_dict[key]
 
+class dispatch_work:
+    def __init__(self, task_name, work, done_evt = None):
+        self.task_name = task_name
+        self.work_group = 0
+        self.current = work[0]      # base_task.current
+        self.plugin = work[1]       # plugin_name
+        self.done_evt = done_evt    # func, argv
+
 class engine(dis_node):
     def __init__(self, ini_file = "node.ini"):
         cfg = cfg_file_parser(ini_file)
@@ -62,7 +70,10 @@ class engine(dis_node):
         self.pending_task = []      # 断线节点的需重新分发的任务
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
         self.tasks_ref = {}         # 任务引用计数器
+        self.works_ref = {}         # key = 组ID value = (ref, node)
+        self.group_id = 0
         self.log_lock = threading.Lock()
+        self.ref_lock = threading.Lock()
         self.idle_time = time.time()
         # init dis_node
         name = cfg.get_cfg_vaule("node_id")
@@ -120,6 +131,26 @@ class engine(dis_node):
             
         raise Exception("Task id %d no found" % _id)
     
+    def __add_ref(self, task_name, value):
+        try:
+            self.ref_lock.acquire()
+            self.tasks_ref[task_name] += value
+        except:
+            self.tasks_ref[task_name] = value
+        finally:
+            self.ref_lock.release()
+        
+    def __add_work_ref(self, work, value):
+        if work.work_group:
+            self.ref_lock.acquire()
+            self.works_ref[work.work_group][0] += value
+            self.ref_lock.release()
+            if self.works_ref[work.work_group][0] <= 0:
+                node = self.works_ref[work.work_group][1]
+                print node['name'], "->", self.name, "works complete"
+                self.set_node_status("works", None, target=node, force_refresh = True)
+                self.works_ref.pop(work.work_group)
+                
     def log(self, task_info, log):
         time_stamp = time.strftime('%Y-%m-%d %X', time.localtime(time.time()))
         task_name = task_info['task']
@@ -128,7 +159,7 @@ class engine(dis_node):
         dis_node.log(self, self.name + '\t' +       # 节点名
                             task_name + '\t' +      # 任务名
                             time_stamp + '\t' +     # 时间戳
-                            task_info['work'][1] + '\t' +   # 插件名
+                            task_info['plugin'] + '\t' +   # 插件名
                             log + '\n')
         self.log_lock.release()
     
@@ -155,7 +186,7 @@ class engine(dis_node):
         for node in self.nodes.values():
             if node['name']:
                 self.set_node_cfg(node, cfg)
-            
+                
     def handler_query(self):
         """ 查询任务状态
         """
@@ -231,26 +262,27 @@ class engine(dis_node):
     
     def handler_node_task(self, node, task):
         """ 接受到节点任务
-        """       
+        """
         if isinstance(task, list):
             print "%s -> %s task num:%d" % (node['name'], self.name, len(task))
+            
+            self.group_id += 1
+            group_id = self.group_id
+            self.works_ref[group_id] = [len(task), node]
+            
             for work in task:
                 if self.queue.full():
                     self.set_node_status("busy", True)
+               
+                work.work_group = group_id
+                self.queue.put(work)
 
-                work_done_evt = None
-                if work == task[-1]:
-                    work_done_evt = (self.__works_done, node)
-                    
-                self.queue.put((work[0], work[1], work_done_evt))
             print "RCV task DONE"
         else:
-            print "%s -> %s task id:%d" % (node['name'], self.name, task.id)
-            try:
-                self.tasks_ref[task.name] += 1
-            except:
-                self.tasks_ref[task.name] = 1
-                
+            print "%s -> %s task id:%d %d" % (node['name'], self.name, task.id, task.get_task_count())
+            # 未处理节点断线重添加情况
+            self.__add_ref(task.name, 1)
+
             task.node = node
             self.tasks[task.id] = task
     
@@ -260,18 +292,18 @@ class engine(dis_node):
         if key == "done_id":
             task = self.__id_to_child_task(value)
             node['tasks'].remove(task.id)
-            self.tasks_ref[task.name] -= 1
+            self.__add_ref(task.name, -1)
             task.done = True
         
-        if key == "works" and value == None:
-            for task_name, work in node['works']:
-                self.tasks_ref[task_name] -= 1
+        if key == "works" and value == None and node['works']:
+            for work in node['works']:
+                self.__add_ref(work.task_name, -1)
+                self.__add_work_ref(work, -1)
         
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
             1、一次分配一段ip
         """
-        #print "handler_node_idle: tasks " , task.get_task_count()
         if len(self.pending_task) > 0:
             child_task = self.pending_task.pop()
             if isinstance(child_task, list):
@@ -284,9 +316,11 @@ class engine(dis_node):
             try:
                 task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
                 child_task = task.split(1)
-            except: return
+                self.__add_ref(child_task.name, 1)
+            except:
+                self.__try_push_work()
+                return
         
-        self.tasks_ref[child_task.name] += 1
         node['tasks'].add(child_task.id)
         self.set_node_task(node, child_task)
         
@@ -303,42 +337,43 @@ class engine(dis_node):
                 while len(works) < self.queue.maxsize/2:
                     try:
                         # task_id, work
-                        task_name, work = self.queue.get(timeout = 1)[:2]
-                        works.append((task_name, work))
-                        self.tasks_ref[task_name] += 1
+                        work = self.queue.get(timeout = 1)
+                        work.done_evt = None
+                        works.append(work)
+                        self.__add_ref(work.task_name, 1)
                     except:
                         break
-                
-                node['works'] = works
-                self.set_node_task(node, works)
+                    
+                if len(works) > 0:
+                    node['works'] = works
+                    self.set_node_task(node, works)
                 break
     
-    def __works_done(self, obj):
+    def __works_done(self, task):
         """ 任务完成，向任务发起者报告
         """
-        if isinstance(obj, base_task):
-            self.tasks_ref[obj.name] -= 1
-        else:
-            self.set_node_status("works", None, target=obj, force_refresh = True)
+        self.__add_ref(task.name, -1)
     
     def __worker_thread(self, thread_id):
         """ 任务分发线程
         """
         while True:
             try:
-                task_name, work, work_done_evt = self.queue.get(timeout = 1)
-                task, plugin = work
+                work = self.queue.get(timeout = 1)
                 
                 try:
                     self.thread_idle.remove(thread_id)
                 except: pass
                 
                 self.set_node_status("idle", False)
+                task_info = {'work':work.current, 'plugin':work.plugin, 'task':work.task_name}
                 
-                self.plugins[plugin].handle_task({'work':work, 'task':task_name})
+                self.plugins[work.plugin].handle_task(task_info)
                 
-                if work_done_evt:
-                    func, argv = work_done_evt
+                self.__add_work_ref(work, -1)
+
+                if work.done_evt:
+                    func, argv = work.done_evt
                     func(argv)
 
             except Queue.Empty:
@@ -388,13 +423,12 @@ class engine(dis_node):
                     continue
 
                 try:
-                    work = task.move_next()
-                    work_done_evt = None
+                    work = dispatch_work(task.name, task.move_next())
                     
                     if task.get_task_count() == 0:
-                        work_done_evt = (self.__works_done, task)
+                        work.done_evt = (self.__works_done, task)
                     
-                    self.queue.put((task.name, work, work_done_evt))
+                    self.queue.put(work)
                 except: pass
                 
             # test node busy
@@ -405,14 +439,14 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
-    server = engine()
+#    server = engine()
 #    server.load_task("task.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()
     
-#    node1 = engine("node1.ini")
-#    node2 = engine("node2.ini")
-#    node3 = engine("node3.ini")
-#    
-#    node2.load_task("task.txt")
+    node1 = engine("node1.ini")
+    node2 = engine("node2.ini")
+    node3 = engine("node3.ini")
+    
+    node2.load_task("task.txt")

@@ -1,12 +1,12 @@
 from task import *
-import socket, struct
+import socket, struct, time
 
 class port_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
     
     def handle_task(self, task_info):
-        ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'][0])))
+        ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
         self.log(task_info, "handle_task: %s" %  ip)
         for port in self.get_cfg_vaule(task_info, "ports").split(" "):
             try:

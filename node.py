@@ -193,7 +193,7 @@ class dis_node:
         if target:
             self.__send_node_obj(target, "STATUS", (key, value))
         else:
-            for node in self.nodes.itervalues():
+            for node in self.nodes.values():
                 self.__send_node_obj(node, "STATUS", (key, value))
                 
         return True

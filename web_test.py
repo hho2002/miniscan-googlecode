@@ -6,7 +6,7 @@ class web_plugin(engine_plugin):
         engine_plugin.__init__(self, name)
     
     def handle_task(self, task_info):
-        host, url = task_info['work'][0]
+        host, url = task_info['work']
         self.log(task_info, "URL: %s %s" % (host, url))
         
 def init_plugin(name):
