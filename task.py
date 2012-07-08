@@ -7,14 +7,13 @@ class engine_plugin:
     def __init__(self, name):
         self.name = name
         self.engine = None
-    
+        self.max_process = 0 
     def log(self, task_info, log):
         self.engine.log(task_info, log)
     
     def get_cfg_vaule(self, task_info, key):
         cfg = self.engine.cfgs[task_info['task']]
         return cfg.get_cfg_vaule(key)
-        
     def handle_task(self, task_info):
         pass
     
@@ -32,7 +31,12 @@ class base_task:
         self.plugin = plugins
         self.current_plugin = 0
         self.node = None            # 该任务来自的节点
+        self.plugin_process = {}    # 插件自定义进度 key = plugin value = (process, max_process)
         self.name = name
+        
+        for plugin in plugins:
+            self.plugin_process[plugin] = [0, 1]
+            
     def test_all_done(self):
         if not self.done:
             return False
@@ -50,21 +54,39 @@ class base_task:
         pass
     def get_child_by_id(self, _id):
         return self.childs[_id]
+    def __plugin_move_next(self, plugin):
+        process, max_process = self.plugin_process[plugin]
+        
+        if process < max_process - 1:
+            self.plugin_process[plugin][0] = process + 1
+        else:
+            self.plugin_process[plugin][0] = 0
+            
+        return (process, max_process)
+    def init_plugin_process(self, plugins):
+        """
+        """
+        for plugin in plugins.values():
+            self.plugin_process[plugin.name] = [0, plugin.max_process]
+        pass
     def move_next(self):
         plugin = self.plugin[self.current_plugin]
-        if self.current_plugin == 0:
+        process, max_process = self.__plugin_move_next(plugin)
+        
+        if self.current_plugin == 0 and process == 0:
             try:
                 self.current = self.handler_next()
             except:
                 self.done = True
                 raise Exception("Move the last")
             
-        if self.current_plugin < len(self.plugin)-1:
-            self.current_plugin += 1
-        else:
-            self.current_plugin = 0
+        if process == max_process - 1:
+            if self.current_plugin < len(self.plugin)-1:
+                self.current_plugin += 1
+            else:
+                self.current_plugin = 0
             
-        return (self.current, plugin)
+        return (self.current, plugin, process)
     
 class host_seg:
     # class (or static) variable

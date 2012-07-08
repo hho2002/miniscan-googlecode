@@ -58,6 +58,7 @@ class dispatch_work:
         self.work_group = 0
         self.current = work[0]      # base_task.current
         self.plugin = work[1]       # plugin_name
+        self.process = work[2]      # plugin_process
         self.done_evt = done_evt    # func, argv
 
 class engine(dis_node):
@@ -181,6 +182,7 @@ class engine(dis_node):
         except:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
 
+        task.init_plugin_process(self.plugins)
         self.tasks_ref[task_name] = 1
         self.tasks[task.id] = task
         for node in self.nodes.values():
@@ -284,6 +286,7 @@ class engine(dis_node):
             self.__add_ref(task.name, 1)
 
             task.node = node
+            task.init_plugin_process(self.plugins)
             self.tasks[task.id] = task
     
     def handler_node_status(self, node, key, value):
@@ -366,7 +369,10 @@ class engine(dis_node):
                 except: pass
                 
                 self.set_node_status("idle", False)
-                task_info = {'work':work.current, 'plugin':work.plugin, 'task':work.task_name}
+                task_info = {'work':work.current, \
+                             'process':work.process, \
+                             'plugin':work.plugin, \
+                             'task':work.task_name}
                 
                 self.plugins[work.plugin].handle_task(task_info)
                 
