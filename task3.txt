@@ -1,0 +1,8 @@
+# init engine setting
+plugin = id_test
+
+# plugin params
+md5 = e1faffb3e614e6c2fba74296962386b7 7d8c6c460a0260f3c7ceada1589cb83d
+
+# len pwd_list = 20 
+max_id = 20

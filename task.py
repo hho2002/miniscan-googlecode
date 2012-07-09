@@ -167,7 +167,48 @@ class host_seg:
         
         self.ip_count -= 1
         return ret
+    
+class id_task(base_task):
+    def __init__(self, name, max_id, plugins):
+        base_task.__init__(self, name, plugins)
+        self.current_id = 0
+        self.max_id = max_id
+        
+    def get_task_count(self):
+        return self.max_id - self.current_id
+        
+    def handler_next(self):
+        if self.current_id >= self.max_id:
+            raise Exception("task empty")
+        
+        ret = self.current_id
+        self.current_id += 1
+        return ret
+    
+    def split(self, count):
+        task_count = self.get_task_count()
+        if task_count < 1:
+            raise Exception("split task_count failed")
+        
+        if task_count > 1:
+            child = id_task(self.name, self.max_id, self.plugin)
+            count = max(count/len(self.plugin), 1)
+            child.current_id = self.max_id - count
+            self.max_id -= count
+        else:
+            pos = len(self.plugin) - count
+            if task_count < count:
+                pos = self.current_plugin + 1
+                
+            plugin = self.plugin[pos:]
+            self.plugin = self.plugin[:pos]
 
+            child = id_task(self.name, self.max_id, plugin)
+            child.current_id = self.current_id
+        
+        self.childs[child.id] = child
+        return child
+    
 class node_task(base_task):
     def __init__(self, name = '', hosts = None, plugins = None):
         base_task.__init__(self, name, plugins)
@@ -177,7 +218,7 @@ class node_task(base_task):
         else:
             self.hosts = host_seg(hosts)
    
-    def get_task_count(self):        
+    def get_task_count(self):
         ret = len(self.plugin) * self.hosts.ip_count - self.current_plugin 
         if self.current_plugin != 0:
             ret += len(self.plugin)
@@ -222,7 +263,8 @@ class node_task(base_task):
 
 #plugins = ["plugin1", "plugin2", "plugin3"]
 #task1 = node_task('task1', "192.168.1.1-192.168.1.3\n192.168.1.4", plugins)
-#task2 = task1.split(1)
+#task1 = id_task('task1', 3, plugins)
+#task2 = task1.split(5)
 #task3 = task1.split(1)
 #
 #print task1.get_child_by_id(task2.id), task2

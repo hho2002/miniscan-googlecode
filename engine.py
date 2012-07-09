@@ -177,9 +177,11 @@ class engine(dis_node):
         plugins = self.__init_plugins(cfg)
         
         # 不允许混合加载web和host扫描
-        try:
+        if 'max_id' in cfg.key_dict.keys():
+            task = id_task(task_name, int(cfg.get_cfg_vaule("max_id")), plugins)
+        elif 'host' in cfg.key_dict.keys():
             task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins)
-        except:
+        else:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
 
         task.init_plugin_process(self.plugins)
@@ -455,4 +457,4 @@ if __name__ == '__main__':
     node2 = engine("node2.ini")
     node3 = engine("node3.ini")
     
-    node2.load_task("task.txt")
+    node2.load_task("task3.txt")
