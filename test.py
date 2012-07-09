@@ -4,7 +4,7 @@ import socket, struct, time
 class port_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
-        self.max_process = 20
+        #self.max_process = 20
         
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))

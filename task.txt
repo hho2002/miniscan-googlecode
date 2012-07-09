@@ -1,6 +1,8 @@
 # init engine setting
 plugin = test
 
+#max_id = 100
+
 # plugin params
 ports = 80 3389 135
 

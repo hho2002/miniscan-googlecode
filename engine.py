@@ -99,7 +99,7 @@ class engine(dis_node):
         threading.Thread(target=self.__run).start()
         
     def __init_threads(self):
-        self.queue = Queue.Queue(self.max_thread * 2)
+        self.queue = Queue.Queue(self.max_thread * 4)
         for i in xrange(self.max_thread):
             thread = threading.Thread(target=self.__worker_thread,
                                       args = (i,),
@@ -131,6 +131,12 @@ class engine(dis_node):
             except: pass
             
         raise Exception("Task id %d no found" % _id)
+    
+    def get_node_task_count(self):
+        node_task_count = 0
+        for task in self.tasks.values():
+            node_task_count += task.get_task_count()
+        return node_task_count
     
     def __add_ref(self, task_name, value):
         try:
@@ -304,11 +310,15 @@ class engine(dis_node):
             for work in node['works']:
                 self.__add_ref(work.task_name, -1)
                 self.__add_work_ref(work, -1)
-        
+    
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
             1、一次分配一段ip
         """
+        
+        self.set_node_status('task_count', 
+                self.get_node_task_count(), target = node)
+        
         if len(self.pending_task) > 0:
             child_task = self.pending_task.pop()
             if isinstance(child_task, list):
@@ -329,6 +339,16 @@ class engine(dis_node):
         node['tasks'].add(child_task.id)
         self.set_node_task(node, child_task)
         
+    def __try_request_task(self):
+        sort_nodes = []
+        for node in self.nodes.values():
+            sort_nodes.append((node['task_count'], node))
+            
+        max_node = sorted(sort_nodes)[-1][1] #, key=lambda x:x[0])
+        if max_node['task_count'] > self.get_node_task_count() \
+            or len(sort_nodes) == 1:
+            self.set_node_status('idle', True, target=max_node, force_refresh=True)
+        
     def __try_push_work(self):
         """ 尝试主动推送队列任务
                                 查询空闲子节点
@@ -343,15 +363,19 @@ class engine(dis_node):
                     try:
                         # task_id, work
                         work = self.queue.get(timeout = 1)
-                        work.done_evt = None
+                        if work.done_evt:
+                            # done_evt 会 -1 ref
+                            work.done_evt = None
+                        else:
+                            self.__add_ref(work.task_name, 1)
                         works.append(work)
-                        self.__add_ref(work.task_name, 1)
                     except:
                         break
                     
                 if len(works) > 0:
                     node['works'] = works
                     self.set_node_task(node, works)
+                    self.set_node_status('task_count', self.get_node_task_count(), target = node)
                 break
     
     def __works_done(self, task):
@@ -388,11 +412,10 @@ class engine(dis_node):
                 self.thread_idle.add(thread_id)
                 
                 if len(self.thread_idle) == self.max_thread:
-                    if self.set_node_status("idle", True):
-                        self.idle_time = time.time()
-                    elif time.time() - self.idle_time > 5:
-                        self.idle_time = time.time()
-                        self.set_node_status("idle", True, force_refresh = True)
+                    if self.status['idle'] and time.time() - self.idle_time < 5:
+                        continue
+                    self.idle_time = time.time()
+                    self.__try_request_task()
 
     def __remove_task(self, from_node, task_name):
         """ 父节点向子节点发布删除task命令
@@ -457,4 +480,4 @@ if __name__ == '__main__':
     node2 = engine("node2.ini")
     node3 = engine("node3.ini")
     
-    node2.load_task("task3.txt")
+    node2.load_task("task.txt")

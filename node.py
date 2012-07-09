@@ -94,6 +94,7 @@ class dis_node:
         node['idle'] = False            # 节点所有工作线程都空闲状态
         node['tasks'] = set()           # 节点接受的任务列表 TASK_ID集合
         node['works'] = None            # 节点接受的工作列表
+        node['task_count'] = 0          # 节点剩余任务量，优先调度最大任务量
         node['name'] = ''
         return node
 
