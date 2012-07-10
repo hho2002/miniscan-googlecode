@@ -337,8 +337,12 @@ class engine(dis_node):
     def __try_request_task(self):
         sort_nodes = []
         for node in self.nodes.values():
-            sort_nodes.append((node['task_count'], node))
-            
+            if node['name']:
+                sort_nodes.append((node['task_count'], node))
+        
+        if len(sort_nodes) < 1:
+            return
+        
         max_node = sorted(sort_nodes)[-1][1] #, key=lambda x:x[0])
         if max_node['task_count'] > self.get_node_task_count() \
             or len(sort_nodes) == 1:
@@ -458,14 +462,14 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
-#    server = engine()
+    server = engine()
 #    server.load_task("task.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()
-    
-    node1 = engine("node1.ini")
-    node2 = engine("node2.ini")
-    node3 = engine("node3.ini")
-    
-    node2.load_task("task.txt")
+
+#    node1 = engine("node1.ini")
+#    node2 = engine("node2.ini")
+#    node3 = engine("node3.ini")
+#    
+#    node2.load_task("task.txt")
