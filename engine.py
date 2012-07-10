@@ -197,7 +197,7 @@ class engine(dis_node):
     def handler_query(self):
         """ ²éÑ¯ÈÎÎñ×´Ì¬
         """
-        tasks_info = ''
+        tasks_info = 'TASK NUM:%d\n' % len(self.tasks)
         for task in self.tasks.values():
             task_name = task.name
             if not task.current:
@@ -207,15 +207,15 @@ class engine(dis_node):
                 ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d\tREF:%d\nCURRENT: %s\n" % \
                         (task_name, task.id, task.get_task_count(), self.tasks_ref[task_name], ip)
-            else:
+            elif isinstance(task, web_crawler):
                 url, all_url = task.get_process_info()
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d/%d\nCURRENT: %s\n" % \
                         (task_name, task.id, url, all_url, task.current)
-
-            tasks_info += info
+            else:
+                # ID TASK
+                pass
             
-        if not tasks_info:
-            tasks_info = 'NULL TASKS\n'
+            tasks_info += info
             
         return tasks_info
     
@@ -462,14 +462,14 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
-    server = engine()
+#    server = engine()
 #    server.load_task("task.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()
 
-#    node1 = engine("node1.ini")
-#    node2 = engine("node2.ini")
-#    node3 = engine("node3.ini")
-#    
-#    node2.load_task("task.txt")
+    node1 = engine("node1.ini")
+    node2 = engine("node2.ini")
+    node3 = engine("node3.ini")
+    
+    node1.load_task("task.txt")

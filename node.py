@@ -194,9 +194,9 @@ class dis_node:
             return
         
         for node in self.nodes.values():
-            if not node['name']:
-                continue
-            self.__send_node_obj(node, "MSG", (msg, obj))
+            if node['name']:
+                self.__send_node_obj(node, "MSG", (msg, obj))
+                
     def set_node_status(self, key, value, target=None, force_refresh=False):
         """ 通知节点状态改变 
         """
@@ -210,8 +210,9 @@ class dis_node:
             self.__send_node_obj(target, "STATUS", (key, value))
         else:
             for node in self.nodes.values():
-                self.__send_node_obj(node, "STATUS", (key, value))
-                
+                if node['name']:
+                    self.__send_node_obj(node, "STATUS", (key, value))
+                    
         return True
     
     def __sock_close(self, sock):

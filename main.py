@@ -22,10 +22,9 @@ def __show_help():
 def update_tasks():
     """ 刷新任务列表状态
     """
-    __show_help()
     send_msg(client, CLIENT_QUERY_TASK, '')
     msg = client.recv(4096)
-    print msg
+    return msg
     #sys.stdout.write("\r")
 
 def show_log(task_name, filename = "result.log"):
@@ -61,8 +60,11 @@ if __name__ == '__main__':
     while True:
         status = "tasks"
         if not msvcrt.kbhit():
-            os.system('cls')
-            update_tasks()
+            msg = update_tasks()
+            if msg:
+                os.system('cls')
+                __show_help()
+                print msg
             time.sleep(1)
             continue
         
