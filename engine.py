@@ -193,10 +193,7 @@ class engine(dis_node):
         task.init_plugin_process(self.plugins)
         self.tasks_ref[task_name] = 1
         self.tasks[task.id] = task
-        for node in self.nodes.values():
-            if node['name']:
-                self.set_node_cfg(node, cfg)
-                
+        self.send_msg("CFG", cfg)
     def handler_query(self):
         """ 查询任务状态
         """
@@ -248,24 +245,24 @@ class engine(dis_node):
         """ 发送配置给节点
         """
         if len(self.cfgs) > 0:
-            self.set_node_cfg(node, self.cfgs)
-    
-    def handler_node_cfg(self, node, cfg):
-        if isinstance(cfg, dict):
-            print "RCV CFGS", len(cfg)
-            self.cfgs = cfg
+            self.send_msg("CFGS", self.cfgs, target=node)
+            
+    def handler_node_msg(self, node, msg, obj):
+        """ 接受到节点消息，返回值FALSE表示继续转发消息
+        """
+        if msg == "CFGS":
+            print "RCV CFGS", len(obj)
+            self.cfgs = obj
             for _cfg in self.cfgs.values():
                 self.__init_plugins(_cfg)
-        else:
+        if msg == "CFG":
+            cfg = obj
             print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
-        
-        # 转发CFG
-        for _node in self.nodes.values():
-            if _node['name'] and _node != node:
-                self.set_node_cfg(_node, cfg)
-        
+            
+        return False
+    
     def handler_node_task_del(self, node, task_name):
         print "RCV TASK DEL", task_name
         self.__remove_task(node, task_name)
@@ -480,4 +477,6 @@ if __name__ == '__main__':
     node2 = engine("node2.ini")
     node3 = engine("node3.ini")
     
+    #time.sleep(1)
+    #node1.broadcast_msg("HELLO BOYS", "OBJECT")
     node2.load_task("task.txt")

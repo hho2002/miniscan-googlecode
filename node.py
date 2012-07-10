@@ -26,7 +26,7 @@ class dis_node:
         self.cmds = {"CONN":1, 
                      "TASK":2, 
                      "DEL_TASK":3,
-                     "CFG":4, 
+                     "MSG":4, 
                      "PLUGIN":5, 
                      "STATUS":6,
                      "LOG":7,
@@ -40,7 +40,7 @@ class dis_node:
         self.server_thread = threading.Thread(target=self.server)
         self.server_thread.start()
         
-    def rcv_msg(self, node, buf):
+    def __rcv_msg(self, node, buf):
         if len(buf) < MSG_HDR_LEN:
             return buf
 
@@ -61,8 +61,12 @@ class dis_node:
             self.__send_node_obj(node, "STATUS", ('name', self.name))
             self.handler_node_conn(node)
             
-        if msg_type == self.cmds["CFG"]:
-            self.handler_node_cfg(node, pickle.loads(msg))
+        if msg_type == self.cmds["MSG"]:
+            _msg, _obj = pickle.loads(msg)
+            if not self.handler_node_msg(node, _msg, _obj):
+                for _node in self.nodes.values():
+                    if _node['name'] and _node != node:
+                        self.__send_to(_node, buf[:msg_len])
             
         if msg_type == self.cmds["STATUS"]:
             key, value = pickle.loads(msg)
@@ -87,7 +91,7 @@ class dis_node:
         
         buf = buf[msg_len:]
         
-        return self.rcv_msg(node, buf)
+        return self.__rcv_msg(node, buf)
     
     def __init_node_info(self, sock, addr):
         node = {}
@@ -139,7 +143,7 @@ class dis_node:
                     if node_info['pending_pack']:
                         buf = node_info['pending_pack'] + buf
 
-                    node_info['pending_pack'] = self.rcv_msg(node_info, buf)
+                    node_info['pending_pack'] = self.__rcv_msg(node_info, buf)
                     
             if len(errfds) > 0:
                 for err_sock in errfds:
@@ -155,7 +159,9 @@ class dis_node:
         pass
     def handler_node_task_del(self, node, task_name):
         pass
-    def handler_node_cfg(self, node, cfg):
+    def handler_node_msg(self, node, msg, obj):
+        """ 处理节点接受到的消息，返回True表示该消息处理完毕，Flase会继续转发
+        """
         pass
     def handler_node_close(self, node):
         pass
@@ -188,8 +194,15 @@ class dis_node:
         self.__send_node_obj(node, "DEL_TASK", name)
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)
-    def set_node_cfg(self, node, cfg):
-        self.__send_node_obj(node, "CFG", cfg)
+    def send_msg(self, msg, obj, target=None):
+        if target:
+            self.__send_node_obj(target, "MSG", (msg, obj))
+            return
+        
+        for node in self.nodes.values():
+            if not node['name']:
+                continue
+            self.__send_node_obj(node, "MSG", (msg, obj))
     def set_node_status(self, key, value, target=None, force_refresh=False):
         """ 通知节点状态改变 
         """
