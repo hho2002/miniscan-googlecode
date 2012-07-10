@@ -1,9 +1,9 @@
 # -*- coding: gb2312 -*-
 import socket, select
-import threading, time
-import struct, StringIO
+import threading
+import struct
 import cPickle as pickle
-import task
+import zlib
 import sys
 #
 # --- pickle docs ---
@@ -12,6 +12,7 @@ import sys
 
 DEFAULT_NODE_PORT = 9910
 MSG_HDR_LEN = struct.calcsize("ii")
+MSG_COMPRESS_FLAG = 0x10000
 
 class dis_node:
     def __init__(self, name, parent=None, port=DEFAULT_NODE_PORT):
@@ -43,24 +44,27 @@ class dis_node:
         if len(buf) < MSG_HDR_LEN:
             return buf
 
-        hdr = struct.unpack_from("ii", buf)
-        if len(buf) < hdr[1]:
+        msg_type, msg_len = struct.unpack_from("ii", buf)
+        if len(buf) < msg_len:
             return buf
         
-        msg = buf[MSG_HDR_LEN:hdr[1]]
-        
-        if hdr[0] == self.cmds["LOG"]:
+        msg = buf[MSG_HDR_LEN:msg_len]
+        if msg_type & MSG_COMPRESS_FLAG:
+            msg = zlib.decompress(msg)
+            msg_type -= MSG_COMPRESS_FLAG
+            
+        if msg_type == self.cmds["LOG"]:
             self.handler_node_log(node, pickle.loads(msg))
             
-        if hdr[0] == self.cmds["CONN"]:
+        if msg_type == self.cmds["CONN"]:
             node['name'] = msg
             self.__send_node_obj(node, "STATUS", ('name', self.name))
             self.handler_node_conn(node)
             
-        if hdr[0] == self.cmds["CFG"]:
+        if msg_type == self.cmds["CFG"]:
             self.handler_node_cfg(node, pickle.loads(msg))
             
-        if hdr[0] == self.cmds["STATUS"]:
+        if msg_type == self.cmds["STATUS"]:
             key, value = pickle.loads(msg)
             print "STATUS:", key, value
             
@@ -70,18 +74,18 @@ class dis_node:
             self.handler_node_status(node, key, value)
             node[key] = value
             
-        if hdr[0] == self.cmds["TASK"]:
+        if msg_type == self.cmds["TASK"]:
             self.handler_node_task(node, pickle.loads(msg))
-        if hdr[0] == self.cmds["DEL_TASK"]:
+        if msg_type == self.cmds["DEL_TASK"]:
             self.handler_node_task_del(node, pickle.loads(msg))
-        if hdr[0] == self.cmds["CLIENT_ADD"]:
+        if msg_type == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
             
-        if hdr[0] == self.cmds["CLIENT_QUERY_TASK"]:
+        if msg_type == self.cmds["CLIENT_QUERY_TASK"]:
             self.__send_to(node, self.handler_query())
         
-        buf = buf[hdr[1]:]
+        buf = buf[msg_len:]
         
         return self.rcv_msg(node, buf)
     
@@ -157,10 +161,14 @@ class dis_node:
         pass
     def handler_node_status(self, node, key, value):
         pass
-
     def __send_node_obj(self, node, cmd, obj):
+        msg_type = self.cmds[cmd]
         obj_s = pickle.dumps(obj)
-        stream = struct.pack("ii", self.cmds[cmd], MSG_HDR_LEN + len(obj_s))
+        if len(obj_s) > 0x100:
+            obj_s = zlib.compress(obj_s)
+            msg_type |= MSG_COMPRESS_FLAG
+            
+        stream = struct.pack("ii", msg_type, MSG_HDR_LEN + len(obj_s))
         stream += obj_s
         #print "send task %d bytes" % len(stream)
         self.__send_to(node, stream)
