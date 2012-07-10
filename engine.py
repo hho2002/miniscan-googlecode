@@ -260,12 +260,10 @@ class engine(dis_node):
             print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
+        if msg == "DEL_TASK":
+            self.__remove_task(obj)
             
         return False
-    
-    def handler_node_task_del(self, node, task_name):
-        print "RCV TASK DEL", task_name
-        self.__remove_task(node, task_name)
     
     def handler_node_task(self, node, task):
         """ 接受到节点任务
@@ -414,18 +412,10 @@ class engine(dis_node):
                     self.idle_time = time.time()
                     self.__try_request_task()
 
-    def __remove_task(self, from_node, task_name):
-        """ 父节点向子节点发布删除task命令
-        """
-        # remove all tasks resources
-        try:
-            self.cfgs.pop(task_name)
-            print "!!!!remove task:", task_name
-            for node in self.nodes.values():
-                if node != from_node and node['name']:
-                    self.del_node_task(node, task_name)
-        except: pass
-        
+    def __remove_task(self, task_name):
+        print self.name, "!!!!remove task:", task_name
+        self.cfgs.pop(task_name)
+
     def __run(self):
         self.__init_threads()
         while True:
@@ -442,7 +432,8 @@ class engine(dis_node):
                     if task.node:
                         self.set_node_status("done_id", task.id, task.node, True)
                     else:
-                        self.__remove_task(None, task.name)
+                        self.__remove_task(task.name)
+                        self.send_msg("DEL_TASK", task.name)
                         
                     self.tasks.pop(key)
                     continue
@@ -477,6 +468,4 @@ if __name__ == '__main__':
     node2 = engine("node2.ini")
     node3 = engine("node3.ini")
     
-    #time.sleep(1)
-    #node1.broadcast_msg("HELLO BOYS", "OBJECT")
     node2.load_task("task.txt")

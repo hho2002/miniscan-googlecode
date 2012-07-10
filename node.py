@@ -25,7 +25,7 @@ class dis_node:
         self.name = name
         self.cmds = {"CONN":1, 
                      "TASK":2, 
-                     "DEL_TASK":3,
+                     "NONE":3,
                      "MSG":4, 
                      "PLUGIN":5, 
                      "STATUS":6,
@@ -80,8 +80,6 @@ class dis_node:
             
         if msg_type == self.cmds["TASK"]:
             self.handler_node_task(node, pickle.loads(msg))
-        if msg_type == self.cmds["DEL_TASK"]:
-            self.handler_node_task_del(node, pickle.loads(msg))
         if msg_type == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
@@ -157,8 +155,6 @@ class dis_node:
         pass
     def handler_node_task(self, node, task):
         pass
-    def handler_node_task_del(self, node, task_name):
-        pass
     def handler_node_msg(self, node, msg, obj):
         """ 处理节点接受到的消息，返回True表示该消息处理完毕，Flase会继续转发
         """
@@ -190,8 +186,6 @@ class dis_node:
                 fp.write(log)
                 fp.close()
 
-    def del_node_task(self, node, name):
-        self.__send_node_obj(node, "DEL_TASK", name)
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)
     def send_msg(self, msg, obj, target=None):
