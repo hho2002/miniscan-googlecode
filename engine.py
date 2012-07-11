@@ -73,6 +73,7 @@ class engine(dis_node):
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
         self.tasks_ref = {}         # 任务引用计数器 key = id(task)
         self.works_ref = {}         # key = 组ID value = (ref, node)
+        self.tasks_status = {}      # key = task_name value "pause" "run"
         self.group_id = 0
         self.log_lock = threading.Lock()
         self.ref_lock = threading.Lock()
@@ -140,11 +141,17 @@ class engine(dis_node):
         return node_task_count
     
     def __add_ref(self, task, value):
+        """ 增加任务引用 task为任务或者ID
+        """
         try:
+            if isinstance(task, int):
+                id_task = task
+            else:
+                id_task = id(task)
             self.ref_lock.acquire()
-            self.tasks_ref[id(task)] += value
+            self.tasks_ref[id_task] += value
         except:
-            self.tasks_ref[id(task)] = value
+            self.tasks_ref[id_task] = value
         finally:
             self.ref_lock.release()
         
@@ -170,7 +177,11 @@ class engine(dis_node):
                             task_info['plugin'] + '\t' +   # 插件名
                             log + '\n')
         self.log_lock.release()
-    
+        
+    def set_task_status(self, task_name, status):
+        self.tasks_status[task_name] = status
+        self.send_msg("TASK_STATUS", (task_name, status))
+        
     def load_task(self, filename, context=None):
         if context:
             print "load_task:", filename
@@ -193,6 +204,7 @@ class engine(dis_node):
 
         task.init_plugin_process(self.plugins)
         self.__add_ref(task, 1)
+        self.tasks_status[task.name] = "run"
         self.tasks[task.id] = task
         self.send_msg("CFG", cfg)
     def handler_query(self):
@@ -206,8 +218,9 @@ class engine(dis_node):
             
             if isinstance(task, node_task):
                 ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
-                info = "\nNAME:%s\tID:%d\tREMAIN:%d\tREF:%d\nCURRENT: %s\n" % \
-                        (task_name, task.id, task.get_task_count(), self.tasks_ref[id(task)], ip)
+                info = "\nNAME:%s\tID:%d\tREMAIN:%d\tREF:%d\tSTATUS:%s\nCURRENT: %s\n" % \
+                        (task_name, task.id, task.get_task_count(), self.tasks_ref[id(task)],
+                         self.tasks_status[task_name], ip)
             elif isinstance(task, web_crawler):
                 url, all_url = task.get_process_info()
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d/%d\nCURRENT: %s\n" % \
@@ -263,6 +276,10 @@ class engine(dis_node):
             self.__init_plugins(cfg)
         if msg == "DEL_TASK":
             self.__remove_task(obj)
+        if msg == "TASK_STATUS":
+            task_name, status = obj
+            print "TASK_STATUS:", task_name, status
+            self.tasks_status[task_name] = status
             
         return False
     
@@ -288,7 +305,7 @@ class engine(dis_node):
             print "%s -> %s task id:%d %d" % (node['name'], self.name, task.id, task.get_task_count())
             # 未处理节点断线重添加情况
             self.__add_ref(task, 1)
-
+            self.tasks_status[task.name] = "run"
             task.node = node
             task.init_plugin_process(self.plugins)
             self.tasks[task.id] = task
@@ -306,6 +323,14 @@ class engine(dis_node):
             for work in node['works']:
                 self.__add_ref(work.id_task, -1)
                 self.__add_work_ref(work, -1)
+                
+    def __get_busy_task(self):
+        task_list = []
+        for task in self.tasks.values():
+            if self.tasks_status[task.name] == "run":
+                task_list.append((task.get_task_count(), task))
+        
+        return sorted(task_list)[-1][1]
     
     def handler_node_idle(self, node):
         """ 处理简单的任务分发
@@ -325,7 +350,7 @@ class engine(dis_node):
         else:
             # 随机从任务队列中挑选一个执行任务分配
             try:
-                task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
+                task = self.__get_busy_task()
                 child_task = task.split(1)
                 self.__add_ref(task, 1)
             except:
@@ -443,7 +468,7 @@ class engine(dis_node):
                     self.tasks.pop(key)
                     continue
                 
-                if task.done:
+                if task.done or self.tasks_status[task.name] != "run":
                     continue
 
                 try:
@@ -474,3 +499,9 @@ if __name__ == '__main__':
     node3 = engine("node3.ini")
     
     node1.load_task("task.txt")
+    time.sleep(1)
+    node1.set_task_status("task", "pause")
+    time.sleep(10)
+    node1.set_task_status("task", "run")
+
+    
