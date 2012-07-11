@@ -25,11 +25,11 @@ class dis_node:
         self.name = name
         self.cmds = {"CONN":1, 
                      "TASK":2, 
-                     "NONE":3,
-                     "MSG":4, 
-                     "PLUGIN":5, 
-                     "STATUS":6,
-                     "LOG":7,
+                     "MSG":3, 
+                     "PLUGIN":4, 
+                     "STATUS":5,
+                     "LOG":6,
+                     "CLIENT_CONTROL":7,
                      "CLIENT_ADD":8,
                      "CLIENT_QUERY_TASK":9,
                      "MAX":10}
@@ -83,9 +83,11 @@ class dis_node:
         if msg_type == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
-            
+        if msg_type == self.cmds["CLIENT_CONTROL"]:
+            cmd, cmsg = msg.split('\0')
+            self.handler_client_control(node, cmd, cmsg)
         if msg_type == self.cmds["CLIENT_QUERY_TASK"]:
-            self.__send_to(node, self.handler_query())
+            self.__send_to(node, self.handler_client_query())
         
         buf = buf[msg_len:]
         
@@ -146,7 +148,8 @@ class dis_node:
             if len(errfds) > 0:
                 for err_sock in errfds:
                     self.__sock_close(err_sock)
-
+    def handler_client_control(self, node, cmd, msg):
+        pass
     def handler_node_log(self, node, msg):
         pass
     def handler_node_conn(self, node):

@@ -6,6 +6,7 @@ import socket, struct
 
 MSG_HDR_LEN = struct.calcsize("ii")
 
+CLIENT_CONTROL = 7
 CLIENT_ADD_CMD = 8
 CLIENT_QUERY_TASK = 9
 
@@ -17,7 +18,7 @@ def send_msg(sock, cmd, msg):
     sock.send(stream)
     
 def __show_help():
-    print "Esc to entry cmd! cmd list[add log exit]\n"
+    print "Esc to entry cmd! cmd list[add/del pause/run log exit]\n"
     
 def update_tasks():
     """ 刷新任务列表状态
@@ -76,6 +77,12 @@ if __name__ == '__main__':
             
             if cmd[0] == "add":
                 add_task(cmd[1])
+                
+            if cmd[0] == "pause":
+                send_msg(client, CLIENT_CONTROL, "pause" + '\0' + cmd[1])
+                
+            if cmd[0] == "run":
+                send_msg(client, CLIENT_CONTROL, "run" + '\0' + cmd[1])
                 
             if cmd[0] == "log":
                 show_log(cmd[1])

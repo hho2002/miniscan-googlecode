@@ -207,7 +207,12 @@ class engine(dis_node):
         self.tasks_status[task.name] = "run"
         self.tasks[task.id] = task
         self.send_msg("CFG", cfg)
-    def handler_query(self):
+        
+    def handler_client_control(self, node, cmd, msg):
+        if cmd == "pause" or cmd == "run":
+            self.set_task_status(msg, cmd)
+            
+    def handler_client_query(self):
         """ ²éÑ¯ÈÎÎñ×´Ì¬
         """
         tasks_info = 'TASK NUM:%d\n' % len(self.tasks)
@@ -499,9 +504,9 @@ if __name__ == '__main__':
     node3 = engine("node3.ini")
     
     node1.load_task("task.txt")
-    time.sleep(1)
-    node1.set_task_status("task", "pause")
-    time.sleep(10)
-    node1.set_task_status("task", "run")
+#    time.sleep(1)
+#    node1.set_task_status("task", "pause")
+#    time.sleep(10)
+#    node1.set_task_status("task", "run")
 
     
