@@ -55,6 +55,7 @@ class cfg_file_parser:
 class dispatch_work:
     def __init__(self, task_name, work, done_evt = None):
         self.task_name = task_name
+        self.id_task = 0
         self.work_group = 0
         self.current = work[0]      # base_task.current
         self.plugin = work[1]       # plugin_name
@@ -70,7 +71,7 @@ class engine(dis_node):
         self.tasks = {}             # 任务列表 dict key = task_id
         self.pending_task = []      # 断线节点的需重新分发的任务
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
-        self.tasks_ref = {}         # 任务引用计数器
+        self.tasks_ref = {}         # 任务引用计数器 key = id(task)
         self.works_ref = {}         # key = 组ID value = (ref, node)
         self.group_id = 0
         self.log_lock = threading.Lock()
@@ -126,8 +127,8 @@ class engine(dis_node):
     def __id_to_child_task(self, _id):
         for task in self.tasks.values():
             try:
-                task = task.get_child_by_id(_id)
-                return task
+                child = task.get_child_by_id(_id)
+                return (child, task)
             except: pass
             
         raise Exception("Task id %d no found" % _id)
@@ -138,12 +139,12 @@ class engine(dis_node):
             node_task_count += task.get_task_count()
         return node_task_count
     
-    def __add_ref(self, task_name, value):
+    def __add_ref(self, task, value):
         try:
             self.ref_lock.acquire()
-            self.tasks_ref[task_name] += value
+            self.tasks_ref[id(task)] += value
         except:
-            self.tasks_ref[task_name] = value
+            self.tasks_ref[id(task)] = value
         finally:
             self.ref_lock.release()
         
@@ -191,7 +192,7 @@ class engine(dis_node):
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
 
         task.init_plugin_process(self.plugins)
-        self.tasks_ref[task_name] = 1
+        self.__add_ref(task, 1)
         self.tasks[task.id] = task
         self.send_msg("CFG", cfg)
     def handler_query(self):
@@ -206,7 +207,7 @@ class engine(dis_node):
             if isinstance(task, node_task):
                 ip = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d\tREF:%d\nCURRENT: %s\n" % \
-                        (task_name, task.id, task.get_task_count(), self.tasks_ref[task_name], ip)
+                        (task_name, task.id, task.get_task_count(), self.tasks_ref[id(task)], ip)
             elif isinstance(task, web_crawler):
                 url, all_url = task.get_process_info()
                 info = "\nNAME:%s\tID:%d\tREMAIN:%d/%d\nCURRENT: %s\n" % \
@@ -235,7 +236,7 @@ class engine(dis_node):
         print "handler_node_close:", node['tasks']
         # 临时放入列表，待重新分配
         for task_id in node['tasks']:
-            task = self.__id_to_child_task(task_id)
+            task = self.__id_to_child_task(task_id)[0]
             self.pending_task.append(task)
         
         if node['works']:
@@ -286,7 +287,7 @@ class engine(dis_node):
         else:
             print "%s -> %s task id:%d %d" % (node['name'], self.name, task.id, task.get_task_count())
             # 未处理节点断线重添加情况
-            self.__add_ref(task.name, 1)
+            self.__add_ref(task, 1)
 
             task.node = node
             task.init_plugin_process(self.plugins)
@@ -296,14 +297,14 @@ class engine(dis_node):
         """ 节点状态即将发生变化
         """
         if key == "done_id":
-            task = self.__id_to_child_task(value)
+            task, parent = self.__id_to_child_task(value)
             node['tasks'].remove(task.id)
-            self.__add_ref(task.name, -1)
+            self.__add_ref(parent, -1)
             task.done = True
         
         if key == "works" and value == None and node['works']:
             for work in node['works']:
-                self.__add_ref(work.task_name, -1)
+                self.__add_ref(work.id_task, -1)
                 self.__add_work_ref(work, -1)
     
     def handler_node_idle(self, node):
@@ -326,7 +327,7 @@ class engine(dis_node):
             try:
                 task = self.tasks.values()[random.randint(0, len(self.tasks) - 1)]
                 child_task = task.split(1)
-                self.__add_ref(child_task.name, 1)
+                self.__add_ref(task, 1)
             except:
                 self.__try_push_work()
                 return
@@ -366,7 +367,7 @@ class engine(dis_node):
                             # done_evt 会 -1 ref
                             work.done_evt = None
                         else:
-                            self.__add_ref(work.task_name, 1)
+                            self.__add_ref(work.id_task, 1)
                         works.append(work)
                     except:
                         break
@@ -380,7 +381,7 @@ class engine(dis_node):
     def __works_done(self, task):
         """ 任务完成，向任务发起者报告
         """
-        self.__add_ref(task.name, -1)
+        self.__add_ref(task, -1)
     
     def __worker_thread(self, thread_id):
         """ 任务分发线程
@@ -432,7 +433,7 @@ class engine(dis_node):
 
             for key in self.tasks.keys():
                 task = self.tasks[key]
-                if self.tasks_ref[task.name] <= 0:
+                if self.tasks_ref[id(task)] <= 0:
                     if task.node:
                         self.set_node_status("done_id", task.id, task.node, True)
                     else:
@@ -447,7 +448,7 @@ class engine(dis_node):
 
                 try:
                     work = dispatch_work(task.name, task.move_next())
-                    
+                    work.id_task = id(task)
                     if task.get_task_count() == 0:
                         work.done_evt = (self.__works_done, task)
                     
