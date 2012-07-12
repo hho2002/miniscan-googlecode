@@ -29,25 +29,21 @@ def update_tasks():
     #sys.stdout.write("\r")
 
 def show_log(task_name, filename = "result.log"):
-    fp = open(filename)
+    fp = open(filename, 'r')
     log = []
     
     while True:
         buf = fp.readline()
         if not buf:
             break
-        item = buf.split('\t', 5)
-        if item[1] == task_name:
-            log.append(item)
-            
+        item = buf.split('\t', 4)
+        log.append(item)
+
     fp.close()
-    fp = open(task_name + '.log', 'w')
-    for item in sorted(log, key=lambda x:x[3]): # 按照第插件排序
-        s = item[3] + '\t' + item[2]+ '\t' +item[0]+ '\t' + item[4]
+
+    for item in sorted(log, key=lambda x:x[2]): # 第三列插件名排序
+        s = item[1] + '\t' + item[2]+ '\t' +item[3]
         sys.stdout.write(s)
-        fp.write(s)
-        
-    fp.close()
 
 def add_task(name):
     #print name, client
@@ -82,7 +78,7 @@ if __name__ == '__main__':
                 send_msg(client, CLIENT_CONTROL, cmd[0] + '\0' + cmd[1])
                 
             if cmd[0] == "log":
-                show_log(cmd[1])
+                show_log(cmd[1], cmd[1] + '.log')
                 print "[*]press any key to back"
                 msvcrt.getch()
             

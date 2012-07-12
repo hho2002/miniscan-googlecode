@@ -539,17 +539,17 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
-#    server = engine()
+    server = engine()
 #    server.load_task("task.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()
 
-    node1 = engine("node1.ini")
-    node2 = engine("node2.ini")
-    node3 = engine("node3.ini")
-    
-    node1.load_task("task.txt")
+#    node1 = engine("node1.ini")
+#    node2 = engine("node2.ini")
+#    node3 = engine("node3.ini")
+#    
+#    node1.load_task("task.txt")
 #    time.sleep(1)
 #    node1.set_task_status("task", "pause")
 #    time.sleep(10)
