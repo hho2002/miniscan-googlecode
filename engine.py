@@ -63,6 +63,7 @@ class dispatch_work:
         self.done_evt = done_evt    # func, argv
 
 class engine(dis_node):
+    FLAG_PENDING_DEL = 1
     def __init__(self, ini_file = "node.ini"):
         cfg = cfg_file_parser(ini_file)
         self.thread_idle = set()    # 空闲线程列表
@@ -180,6 +181,8 @@ class engine(dis_node):
         
     def set_task_status(self, task_name, status):
         self.tasks_status[task_name] = status
+        if status == "del":
+            self.__remove_task(task_name)
         self.send_msg("TASK_STATUS", (task_name, status))
         
     def load_task(self, filename, context=None):
@@ -203,13 +206,15 @@ class engine(dis_node):
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
 
         task.init_plugin_process(self.plugins)
-        self.__add_ref(task, 1)
-        self.tasks_status[task.name] = "run"
-        self.tasks[task.id] = task
+        
+        self.set_task_status(task_name, "run")
         self.send_msg("CFG", cfg)
         
+        self.__add_ref(task, 1)
+        self.tasks[task.id] = task
+
     def handler_client_control(self, node, cmd, msg):
-        if cmd == "pause" or cmd == "run":
+        if cmd in ("pause", "run", "del"):
             self.set_task_status(msg, cmd)
             
     def handler_client_query(self):
@@ -279,12 +284,12 @@ class engine(dis_node):
             print "RCV CFG:", cfg.task, cfg
             self.cfgs[cfg.task] = cfg
             self.__init_plugins(cfg)
-        if msg == "DEL_TASK":
-            self.__remove_task(obj)
         if msg == "TASK_STATUS":
             task_name, status = obj
             print "TASK_STATUS:", task_name, status
             self.tasks_status[task_name] = status
+            if status == "del":
+                self.__remove_task(task_name)
             
         return False
     
@@ -309,8 +314,12 @@ class engine(dis_node):
         else:
             print "%s -> %s task id:%d %d" % (node['name'], self.name, task.id, task.get_task_count())
             # 未处理节点断线重添加情况
+            
+            if not self.__test_task(task.name):
+                print "RCV ", self.name, " tasks_status ERROR!!! drop task!!!"
+                return
+            
             self.__add_ref(task, 1)
-            self.tasks_status[task.name] = "run"
             task.node = node
             task.init_plugin_process(self.plugins)
             self.tasks[task.id] = task
@@ -319,13 +328,17 @@ class engine(dis_node):
         """ 节点状态即将发生变化
         """
         if key == "done_id":
-            task, parent = self.__id_to_child_task(value)
-            node['tasks'].remove(task.id)
-            self.__add_ref(parent, -1)
-            task.done = True
+            try:
+                task, parent = self.__id_to_child_task(value)
+                node['tasks'].remove(task.id)
+                self.__add_ref(parent, -1)
+                task.done = True
+            except:
+                print "WARN! done_id no task founed!!!"
         
         if key == "works" and value == None and node['works']:
             for work in node['works']:
+                # 应该检查下id_task是否真实存在
                 self.__add_ref(work.id_task, -1)
                 self.__add_work_ref(work, -1)
                 
@@ -423,17 +436,19 @@ class engine(dis_node):
                 try:
                     self.thread_idle.remove(thread_id)
                 except: pass
-                
+
                 self.set_node_status("idle", False)
-                task_info = {'work':work.current, \
-                             'process':work.process, \
-                             'plugin':work.plugin, \
-                             'task':work.task_name}
                 
-                self.plugins[work.plugin].handle_task(task_info)
+                if self.__test_task(work.task_name):
+                    task_info = {'work':work.current, \
+                                 'process':work.process, \
+                                 'plugin':work.plugin, \
+                                 'task':work.task_name}
+                    
+                    self.plugins[work.plugin].handle_task(task_info)
                 
                 self.__add_work_ref(work, -1)
-
+                
                 if work.done_evt:
                     func, argv = work.done_evt
                     func(argv)
@@ -444,13 +459,29 @@ class engine(dis_node):
                 if len(self.thread_idle) == self.max_thread:
                     if self.status['idle'] and time.time() - self.idle_time < 5:
                         continue
+                    
+                    self.status['idle'] = True
                     self.idle_time = time.time()
                     self.__try_request_task()
 
     def __remove_task(self, task_name):
         print self.name, "!!!!remove task:", task_name
-        self.cfgs.pop(task_name)
+        self.tasks_status[task_name] = 'del'
+        #清除队列tasks以及工作队列中的work
+        for task in self.tasks.values():
+            if task.name == task_name:
+                task.flags |= self.FLAG_PENDING_DEL
 
+    def __test_task(self, task_name):
+        """ 测试指定的任务是否可用
+        """
+        if task_name not in self.tasks_status.keys():
+            return False
+        if self.tasks_status[task_name] == 'del':
+            return False
+        # run or pause
+        return True
+                
     def __run(self):
         self.__init_threads()
         while True:
@@ -460,9 +491,8 @@ class engine(dis_node):
                     self.handler_node_task(self.pending_task.pop())
                 else:
                     time.sleep(0.1)
-
-            for key in self.tasks.keys():
-                task = self.tasks[key]
+                       
+            for key, task in self.tasks.items():
                 if self.tasks_ref[id(task)] <= 0:
                     if task.node:
                         self.set_node_status("done_id", task.id, task.node, True)
@@ -471,6 +501,18 @@ class engine(dis_node):
                         self.send_msg("DEL_TASK", task.name)
                         
                     self.tasks.pop(key)
+                    continue
+                
+                if task.flags & self.FLAG_PENDING_DEL:
+                    self.tasks.pop(key)
+                    self.tasks_ref.pop(id(task))
+                    if task.name in self.tasks_status.keys():
+                        # 等待当前队列中所有work完成
+                        while not self.status['idle']:
+                            time.sleep(0.1)
+                        print self.name, "-task:", task.name, "del done!"
+                        self.cfgs.pop(task.name)
+                        self.tasks_status.pop(task.name)
                     continue
                 
                 if task.done or self.tasks_status[task.name] != "run":
@@ -507,6 +549,7 @@ if __name__ == '__main__':
 #    time.sleep(1)
 #    node1.set_task_status("task", "pause")
 #    time.sleep(10)
+#    node1.set_task_status("task", "del")
 #    node1.set_task_status("task", "run")
 
     

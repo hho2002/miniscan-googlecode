@@ -78,11 +78,8 @@ if __name__ == '__main__':
             if cmd[0] == "add":
                 add_task(cmd[1])
                 
-            if cmd[0] == "pause":
-                send_msg(client, CLIENT_CONTROL, "pause" + '\0' + cmd[1])
-                
-            if cmd[0] == "run":
-                send_msg(client, CLIENT_CONTROL, "run" + '\0' + cmd[1])
+            if cmd[0] in ("pause", "run", "del"):
+                send_msg(client, CLIENT_CONTROL, cmd[0] + '\0' + cmd[1])
                 
             if cmd[0] == "log":
                 show_log(cmd[1])

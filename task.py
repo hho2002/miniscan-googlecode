@@ -26,6 +26,7 @@ class base_task:
         base_task.ID += 1
         self.id = base_task.ID
         self.done = False
+        self.flags = 0              # 保留外部使用
         self.current = None
         self.childs = {}
         self.plugin = plugins
@@ -63,12 +64,13 @@ class base_task:
             self.plugin_process[plugin][0] = 0
             
         return (process, max_process)
+    
     def init_plugin_process(self, plugins):
-        """
+        """ 初始化插件自定义处理ID
         """
         for plugin in plugins.values():
             self.plugin_process[plugin.name] = [0, plugin.max_process]
-        pass
+            
     def move_next(self):
         plugin = self.plugin[self.current_plugin]
         process, max_process = self.__plugin_move_next(plugin)
