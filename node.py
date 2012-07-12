@@ -28,7 +28,7 @@ class dis_node:
                      "MSG":3, 
                      "PLUGIN":4, 
                      "STATUS":5,
-                     "LOG":6,
+                     #"LOG":6,
                      "CLIENT_CONTROL":7,
                      "CLIENT_ADD":8,
                      "CLIENT_QUERY_TASK":9,
@@ -52,9 +52,6 @@ class dis_node:
         if msg_type & MSG_COMPRESS_FLAG:
             msg = zlib.decompress(msg)
             msg_type -= MSG_COMPRESS_FLAG
-            
-        if msg_type == self.cmds["LOG"]:
-            self.handler_node_log(node, pickle.loads(msg))
             
         if msg_type == self.cmds["CONN"]:
             node['name'] = msg
@@ -150,8 +147,6 @@ class dis_node:
                     self.__sock_close(err_sock)
     def handler_client_control(self, node, cmd, msg):
         pass
-    def handler_node_log(self, node, msg):
-        pass
     def handler_node_conn(self, node):
         pass
     def handler_node_idle(self, node):
@@ -177,17 +172,6 @@ class dis_node:
         stream += obj_s
         #print "send task %d bytes" % len(stream)
         self.__send_to(node, stream)
-    
-    def log(self, log, filename = "result.log"):
-        if self.parent:
-            self.__send_node_obj(self.parent, "LOG", log)
-        else:
-            sys.stdout.write(log)
-            # 写入日志文件
-            if filename:
-                fp = open(filename, 'a')
-                fp.write(log)
-                fp.close()
 
     def set_node_task(self, node, task):
         self.__send_node_obj(node, "TASK", task)

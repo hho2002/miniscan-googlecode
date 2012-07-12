@@ -76,7 +76,6 @@ class engine(dis_node):
         self.works_ref = {}         # key = 组ID value = (ref, node)
         self.tasks_status = {}      # key = task_name value "pause" "run"
         self.group_id = 0
-        self.log_lock = threading.Lock()
         self.ref_lock = threading.Lock()
         self.idle_time = time.time()
         # init dis_node
@@ -171,13 +170,15 @@ class engine(dis_node):
         time_stamp = time.strftime('%Y-%m-%d %X', time.localtime(time.time()))
         task_name = task_info['task']
         
-        self.log_lock.acquire()
-        dis_node.log(self, self.name + '\t' +       # 节点名
-                            task_name + '\t' +      # 任务名
-                            time_stamp + '\t' +     # 时间戳
-                            task_info['plugin'] + '\t' +   # 插件名
-                            log + '\n')
-        self.log_lock.release()
+        log_info = {'node':self.name, \
+                    'task':task_name, \
+                    'time':time_stamp, \
+                    'plugin':task_info['plugin']}
+        
+        if self.parent:
+            self.send_msg("LOG", (log_info, log), target = self.parent)
+        else:
+            self.plugins[task_info['plugin']].handle_log(log_info, log)
         
     def set_task_status(self, task_name, status):
         self.tasks_status[task_name] = status
@@ -243,11 +244,6 @@ class engine(dis_node):
             
         return tasks_info
     
-    def handler_node_log(self, node, msg):
-        self.log_lock.acquire()
-        dis_node.log(self, msg)
-        self.log_lock.release()
-    
     def handler_node_close(self, node):
         """ 节点断线关闭
             1、如果是子节点断线，将该节点任务迁移
@@ -290,7 +286,15 @@ class engine(dis_node):
             self.tasks_status[task_name] = status
             if status == "del":
                 self.__remove_task(task_name)
-            
+        if msg == "LOG":
+            log_info, log = obj
+            if not self.parent:
+                self.send_msg(msg, obj, target = self.parent)
+            else:
+                self.plugins[log_info['plugin']].handle_log(log_info, log)
+                
+            return True
+        
         return False
     
     def handler_node_task(self, node, task):

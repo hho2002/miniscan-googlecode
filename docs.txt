@@ -49,6 +49,11 @@ some important data flow
     2、handler_node_status RCV works DONE -N
     3、__worker_thread do_work -1
 
+7、log送殻
+    1、self.log->engine_plugin.log->engine.log
+    2、engine.log->send_msg("LOG", (log_info, log), target = self.parent)
+    3、self.plugins[task_info['plugin']].handle_log(log_info, log)
+
 ----------------------------------------------------------------------------
 some important struct
 ----------------------------------------------------------------------------

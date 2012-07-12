@@ -7,15 +7,28 @@ class engine_plugin:
     def __init__(self, name):
         self.name = name
         self.engine = None
-        self.max_process = 0 
+        self.max_process = 0
+        self.log_lock = threading.Lock()
     def log(self, task_info, log):
         self.engine.log(task_info, log)
-    
     def get_cfg_vaule(self, task_info, key):
         cfg = self.engine.cfgs[task_info['task']]
         return cfg.get_cfg_vaule(key)
     def handle_task(self, task_info):
         pass
+    def handle_log(self, log_info, log):
+        self.log_lock.acquire()
+        print log_info['time'], log
+        self.log_lock.release()
+        # log to file
+        log = log_info['node'] + '\t' + \
+              log_info['time'] + '\t' + \
+              self.name + '\t' + \
+              log + '\n' 
+        
+        fp = open(log_info['task'] + '.log', 'a')
+        fp.write(log)
+        fp.close()
     
 class base_task:
     ID = 0
