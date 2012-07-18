@@ -23,6 +23,8 @@ class dis_node:
         self.status = {"idle":False, "busy":False}
         self.sock_list = []
         self.name = name
+        self.dis_locks = {}         # root分布式锁，key = lock_name, value + pending_queue
+                                    # node锁引用计数器 key = lock_name
         self.cmds = {"CONN":1, 
                      "TASK":2, 
                      "MSG":3, 
@@ -32,14 +34,84 @@ class dis_node:
                      "CLIENT_CONTROL":7,
                      "CLIENT_ADD":8,
                      "CLIENT_QUERY_TASK":9,
-                     "MAX":10}
+                     "REQUEST_LOCK":10,
+                     "LOCK_OK":11,
+                     "RELEASE_LOCK":12,
+                     "MAX":13}
 
         if parent:
             self.__connect(parent)
             
         self.server_thread = threading.Thread(target=self.server)
         self.server_thread.start()
+    
+    def request_dis_lock(self, lock_name, node_path = None):
+        """ 请求分布式锁
+        node_path 是记录路由节点名称
+        """
+        if node_path == None:
+            node_path = []
+            
+        if not self.parent:
+            if self.dis_locks.has_key(lock_name):
+                self.dis_locks[lock_name].append(node_path)
+            else:
+                self.dis_locks[lock_name] = [[node for node in node_path],]
+                # 由于__accept_request_lock会修改node_path，上面使用列表复制
+                self.__accept_request_lock(lock_name, node_path)
+            return
         
+        node_path.append(self.name)
+        context = lock_name
+        self.__send_node_obj(self.parent, 'REQUEST_LOCK', (context, node_path))
+        
+        if self.dis_locks.has_key(lock_name):
+            self.dis_locks[lock_name] += 1
+        else:
+            self.dis_locks[lock_name] = 1
+        
+    def release_dis_lock(self, lock_name, node_path = None):
+        # 只有在获取到锁的状态下才能release!!!
+        if node_path == None:
+            node_path = []
+            
+        if not self.parent:
+            current_path = self.dis_locks[lock_name][0]
+            assert node_path == current_path
+            self.dis_locks[lock_name].remove(current_path)
+            if len(self.dis_locks[lock_name]) > 0:
+                # 当前等待队列自动获取到锁
+                self.__accept_request_lock(lock_name, self.dis_locks[lock_name][0])
+            return
+        
+        node_path.append(self.name)
+        context = lock_name
+        self.__send_node_obj(self.parent, 'RELEASE_LOCK', (context, node_path))
+        
+        assert self.dis_locks[lock_name] > 0
+        self.dis_locks[lock_name] -= 1
+        
+    def on_lock_ready(self, lock_name):
+        print self.name, "on_lock_ready:", lock_name
+        pass
+    
+    def get_node_by_name(self, name):
+        for node in self.nodes.values():
+            if node['name'] == name:
+                return node
+        
+        raise Exception("node %s no found" % name)
+    
+    def __accept_request_lock(self, lock_name, node_path):
+        if not node_path:
+            self.on_lock_ready(lock_name)
+            return
+        
+        # 根据path转发消息
+        next_node = self.get_node_by_name(node_path.pop())
+        context = lock_name
+        self.__send_node_obj(next_node, 'LOCK_OK', (context, node_path))
+    
     def __rcv_msg(self, node, buf):
         if len(buf) < MSG_HDR_LEN:
             return buf
@@ -53,19 +125,26 @@ class dis_node:
             msg = zlib.decompress(msg)
             msg_type -= MSG_COMPRESS_FLAG
             
-        if msg_type == self.cmds["CONN"]:
+        if msg_type == self.cmds['REQUEST_LOCK']:
+            lock_name, node_path = pickle.loads(msg)
+            self.request_dis_lock(lock_name, node_path)
+        elif msg_type == self.cmds['RELEASE_LOCK']:
+            lock_name, node_path = pickle.loads(msg)
+            self.release_dis_lock(lock_name, node_path)
+        elif msg_type == self.cmds['LOCK_OK']:
+            lock_name, node_path = pickle.loads(msg)
+            self.__accept_request_lock(lock_name, node_path)
+        elif msg_type == self.cmds["CONN"]:
             node['name'] = msg
             self.__send_node_obj(node, "STATUS", ('name', self.name))
             self.handler_node_conn(node)
-            
-        if msg_type == self.cmds["MSG"]:
+        elif msg_type == self.cmds["MSG"]:
             _msg, _obj = pickle.loads(msg)
             if not self.handler_node_msg(node, _msg, _obj):
                 for _node in self.nodes.values():
                     if _node['name'] and _node != node:
                         self.__send_to(_node, buf[:msg_len])
-            
-        if msg_type == self.cmds["STATUS"]:
+        elif msg_type == self.cmds["STATUS"]:
             key, value = pickle.loads(msg)
             print "STATUS:", key, value
             
@@ -74,16 +153,15 @@ class dis_node:
                 
             self.handler_node_status(node, key, value)
             node[key] = value
-            
-        if msg_type == self.cmds["TASK"]:
+        elif msg_type == self.cmds["TASK"]:
             self.handler_node_task(node, pickle.loads(msg))
-        if msg_type == self.cmds["CLIENT_ADD"]:
+        elif msg_type == self.cmds["CLIENT_ADD"]:
             name, context = msg.split('\0')
             self.load_task(name, context)
-        if msg_type == self.cmds["CLIENT_CONTROL"]:
+        elif msg_type == self.cmds["CLIENT_CONTROL"]:
             cmd, cmsg = msg.split('\0')
             self.handler_client_control(node, cmd, cmsg)
-        if msg_type == self.cmds["CLIENT_QUERY_TASK"]:
+        elif msg_type == self.cmds["CLIENT_QUERY_TASK"]:
             self.__send_to(node, self.handler_client_query())
         
         buf = buf[msg_len:]
@@ -237,18 +315,17 @@ class dis_node:
         stream += self.name  
         self.__send_to(self.parent, stream)
         
-#node0 = dis_node("node0")
-#node1 = dis_node("i'm child" * 1000, ('localhost', 9910), 9911)
-#
-#fd = StringIO.StringIO()
-##print type(node1.parent)
-##childs = pickle.dump(node1.parent, fd)
-##print fd.getvalue()
-#s = pickle.dumps(node1.cmds)
-#print s, len(s)
-#
-#node1.test()
-#
-#while True:
-#    pass
-
+if __name__ == '__main__':
+    import time
+    
+    root = dis_node('root')
+    node1 = dis_node('node1', ('127.0.0.1', 9910), 9911)
+    node2 = dis_node('node2', ('127.0.0.1', 9911), 9912)
+    
+    node2.request_dis_lock("dis_lock")
+    time.sleep(1)
+    node1.request_dis_lock("dis_lock")
+    time.sleep(5)
+    node2.release_dis_lock('dis_lock')
+    while True:
+        time.sleep(1)
