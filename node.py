@@ -23,8 +23,8 @@ class dis_node:
         self.status = {"idle":False, "busy":False}
         self.sock_list = []
         self.name = name
-        self.dis_locks = {}         # root分布式锁，key = lock_name, value + pending_queue
-                                    # node锁引用计数器 key = lock_name
+        self.dis_locks = {}         # root分布式锁，key = lock_name, value + pending_list
+        self.dis_locks_info = {}    # 本地维护的锁信息
         self.cmds = {"CONN":1, 
                      "TASK":2, 
                      "MSG":3, 
@@ -45,55 +45,66 @@ class dis_node:
         self.server_thread = threading.Thread(target=self.server)
         self.server_thread.start()
     
-    def request_dis_lock(self, lock_name, node_path = None):
-        """ 请求分布式锁
-        node_path 是记录路由节点名称
-        """
-        if node_path == None:
-            node_path = []
-            
+    def __request_dis_lock(self, lock_name, node_path):
         if not self.parent:
             if self.dis_locks.has_key(lock_name):
                 self.dis_locks[lock_name].append(node_path)
             else:
-                self.dis_locks[lock_name] = [[node for node in node_path],]
-                # 由于__accept_request_lock会修改node_path，上面使用列表复制
+                self.dis_locks[lock_name] = [node_path, ]
                 self.__accept_request_lock(lock_name, node_path)
             return
         
         node_path.append(self.name)
         context = lock_name
         self.__send_node_obj(self.parent, 'REQUEST_LOCK', (context, node_path))
-        
-        if self.dis_locks.has_key(lock_name):
-            self.dis_locks[lock_name] += 1
+    
+    def request_dis_lock(self, lock_name,  block = True):
+        """ 请求分布式锁
+        node_path 是记录路由节点名称
+        """
+        if self.dis_locks_info.has_key(lock_name):
+            lock_info = self.dis_locks_info[lock_name]
+            assert lock_info['status'] == False
         else:
-            self.dis_locks[lock_name] = 1
-        
-    def release_dis_lock(self, lock_name, node_path = None):
-        # 只有在获取到锁的状态下才能release!!!
-        if node_path == None:
-            node_path = []
+            self.dis_locks_info[lock_name] = {'status':True, 'event':threading.Event()}
             
+        self.__request_dis_lock(lock_name, [])
+        
+        if block:
+            lock_info = self.dis_locks_info[lock_name]
+            lock_info['event'].wait()
+        
+    def __release_dis_lock(self, lock_name, node_path):
         if not self.parent:
             current_path = self.dis_locks[lock_name][0]
-            assert node_path == current_path
-            self.dis_locks[lock_name].remove(current_path)
-            if len(self.dis_locks[lock_name]) > 0:
-                # 当前等待队列自动获取到锁
-                self.__accept_request_lock(lock_name, self.dis_locks[lock_name][0])
+            
+            if node_path == current_path:
+                self.dis_locks[lock_name].remove(current_path)
+                if len(self.dis_locks[lock_name]) > 0:
+                    # 当前等待队列自动获取到锁
+                    self.__accept_request_lock(lock_name, self.dis_locks[lock_name][0])
+            else:
+                print "release_dis_lock WARN:", lock_name, node_path, current_path
+                
             return
         
         node_path.append(self.name)
         context = lock_name
         self.__send_node_obj(self.parent, 'RELEASE_LOCK', (context, node_path))
-        
-        assert self.dis_locks[lock_name] > 0
-        self.dis_locks[lock_name] -= 1
-        
+    
+    def release_dis_lock(self, lock_name):
+        assert self.dis_locks_info.has_key(lock_name)
+        lock_info = self.dis_locks_info[lock_name]
+        assert lock_info['status'] == True
+
+        lock_info['status'] = False
+        self.__release_dis_lock(lock_name, [])
+                
     def on_lock_ready(self, lock_name):
+        lock_info = self.dis_locks_info[lock_name]
+        assert lock_info['status'] == True
         print self.name, "on_lock_ready:", lock_name
-        pass
+        lock_info['event'].set()
     
     def get_node_by_name(self, name):
         for node in self.nodes.values():
@@ -107,10 +118,12 @@ class dis_node:
             self.on_lock_ready(lock_name)
             return
         
+        # 复制一份，防止直接修改记录的路由数据
+        cpy_path = [node for node in node_path]
         # 根据path转发消息
-        next_node = self.get_node_by_name(node_path.pop())
+        next_node = self.get_node_by_name(cpy_path.pop())
         context = lock_name
-        self.__send_node_obj(next_node, 'LOCK_OK', (context, node_path))
+        self.__send_node_obj(next_node, 'LOCK_OK', (context, cpy_path))
     
     def __rcv_msg(self, node, buf):
         if len(buf) < MSG_HDR_LEN:
@@ -127,10 +140,10 @@ class dis_node:
             
         if msg_type == self.cmds['REQUEST_LOCK']:
             lock_name, node_path = pickle.loads(msg)
-            self.request_dis_lock(lock_name, node_path)
+            self.__request_dis_lock(lock_name, node_path)
         elif msg_type == self.cmds['RELEASE_LOCK']:
             lock_name, node_path = pickle.loads(msg)
-            self.release_dis_lock(lock_name, node_path)
+            self.__release_dis_lock(lock_name, node_path)
         elif msg_type == self.cmds['LOCK_OK']:
             lock_name, node_path = pickle.loads(msg)
             self.__accept_request_lock(lock_name, node_path)
@@ -324,8 +337,11 @@ if __name__ == '__main__':
     
     node2.request_dis_lock("dis_lock")
     time.sleep(1)
-    node1.request_dis_lock("dis_lock")
-    time.sleep(5)
     node2.release_dis_lock('dis_lock')
+    
+    node1.request_dis_lock("dis_lock")
+    #time.sleep(1)
+    node1.release_dis_lock('dis_lock')
+    
     while True:
         time.sleep(1)
