@@ -5,19 +5,17 @@
 
 function submit_task()
 {
-	//alert("taskname:" + submit_task_form.taskname.value);
-	//return false;
-
 	var options = { 
 	url:'submit_task',
 	type:'POST',
 	//dataType: 'json',
+	resetForm: true,
 	success: function(result){
+		//$('#submit_task_form').resetForm();
 		alert(result);}
 	};
 
-	$('#submit_task_form').ajaxSubmit(options); 
-	//为了不刷新页面,返回false
+	$('#submit_task_form').ajaxSubmit(options);	
 	return false;
 }
 
