@@ -11,6 +11,7 @@ import random
 from node import *
 from task import *
 from crawler import web_crawler
+import web_server
 
 class cfg_file_parser:
     # class (or static) variable
@@ -99,6 +100,12 @@ class engine(dis_node):
         
         # start main running thread
         threading.Thread(target=self.__run).start()
+        
+        # start web_deamon
+        try:
+            if cfg.get_cfg_vaule("web_deamon").lower() == "true":
+                web_server.run_server(self, 80)
+        except: pass
         
     def __init_threads(self):
         self.queue = Queue.Queue(self.max_thread * 4)
@@ -218,6 +225,22 @@ class engine(dis_node):
         if cmd in ("pause", "run", "del"):
             self.set_task_status(msg, cmd)
             
+    def handler_web_query(self, username):
+        """ 返回特定格式的web数据格式
+        """
+        web_tasks = {}
+        for task in self.tasks.values():
+            #'task1':{'status':"run", 
+            #'id':1, 'ref':1, 'log_count':10, 'remain':30, 'current':"172.16.16.1"},
+            item = web_tasks[task.name] = {}
+            item['status'] = self.tasks_status[task.name]
+            item['id'] = task.id
+            item['ref'] = self.tasks_ref[id(task)]
+            item['log_count'] = 1
+            item['remain'] = task.get_task_count()
+            item['current'] = socket.inet_ntoa(struct.pack("L", socket.htonl(task.current)))
+        return web_tasks
+    
     def handler_client_query(self):
         """ 查询任务状态
         """
@@ -540,7 +563,8 @@ class engine(dis_node):
             
 if __name__ == '__main__':
     server = engine()
-#    server.load_task("task.txt")
+    server.load_task("task.txt")
+    server.load_task("task4.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()

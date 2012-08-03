@@ -2,10 +2,20 @@
 from bottle import route, run, get, post, request, response, redirect 
 from bottle import template, view, static_file
 
-demo_tasks={
-        'task1':{'name':'task1', 'status':"run", 'id':1, 'ref':1, 'log_count':10, 'remain':30, 'current':"172.16.16.1"},
-        'task2':{'name':'task2', 'status':"pause", 'id':2, 'ref':2, 'log_count':11, 'remain':40, 'current':"172.16.16.99"}
+class server_app:
+    def __init__(self):
+        self.dis_engine = None
+        self.tasks = {}
+        
+    def refresh_task_list(self):
+        self.tasks = self.dis_engine.handler_web_query('test')
+
+demo_tasks = {
+        'task1':{'status':"run", 'id':1, 'ref':1, 'log_count':10, 'remain':30, 'current':"172.16.16.1"},
+        'task2':{'status':"pause", 'id':2, 'ref':2, 'log_count':11, 'remain':40, 'current':"172.16.16.99"}
        }
+
+web_app = server_app()
 
 @route('/static/<filename:path>')
 def send_static(filename):
@@ -23,8 +33,9 @@ def do_ajax():
     print "do_ajax:", action, timestamp
     
     demo_tasks['task1']['log_count'] += 1
+    web_app.refresh_task_list()
     
-    return json.dumps(demo_tasks)
+    return json.dumps(web_app.tasks)
 
 @route('/submit_task', method='POST')
 def do_submit_task():
@@ -37,7 +48,7 @@ def do_submit_task():
     return "do_submit_task: missed a field."
 
 def check_login(name, password):
-    print "check_login", name, password
+    print "check_login", name, password, web_app.dis_engine
     return True
 
 @get('/login') # or @route('/login')
@@ -65,10 +76,19 @@ def logout_submit():
 def main_view():
     username = request.get_cookie("account", secret='812ho012')
     if username:
-        return dict(username=username, tasks=demo_tasks)
+        return dict(username=username, tasks=web_app.tasks)
     else:
         redirect("/login")
 
+def __web_demo_run(engine, port):
+    web_app.dis_engine = engine
+    run(host='0.0.0.0', port=port)
+
+def run_server(engine, port):
+    import threading
+    threading.Thread(target=__web_demo_run, args=(engine, port)).start()
+    
 if __name__ == '__main__':
-    run(host='localhost', port=80)
+    run(port=80)
+    
     
