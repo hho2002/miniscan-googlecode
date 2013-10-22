@@ -7,7 +7,7 @@ class port_plugin(engine_plugin):
         #self.max_process = 20
         
     def handle_task(self, task_info):
-        ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
+        ip =  socket.inet_ntoa(struct.pack("I", socket.htonl(task_info['work'])))
         self.log(task_info, "handle_task: %s process:%d" %  (ip, task_info['process']))
         for port in self.get_cfg_vaule(task_info, "ports").split(" "):
             try:

@@ -104,7 +104,7 @@ class engine(dis_node):
         # start web_deamon
         try:
             if cfg.get_cfg_vaule("web_deamon").lower() == "true":
-                web_server.run_server(self, 80)
+                web_server.run_server(self, 8080)
         except: pass
         
     def __init_threads(self):
@@ -564,7 +564,7 @@ class engine(dis_node):
 if __name__ == '__main__':
     server = engine()
     server.load_task("task.txt")
-    server.load_task("task4.txt")
+    #server.load_task("task4.txt")
 #    server.load_task("task2.txt")
     #server.run()
     #threading.Thread(target=server.run).start()
