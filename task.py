@@ -105,7 +105,7 @@ class base_task:
     
 class host_seg:
     # class (or static) variable
-    ip_pattern = re.compile(r'(\d+.\d+.\d+.\d+)[ \t,-](\d+.\d+.\d+.\d+)')
+    ip_pattern = re.compile(r'(\d+.\d+.\d+.\d+)[ \t]*[,-][ \t]*(\d+.\d+.\d+.\d+)')
 
     def __init__(self, hosts = None):
         offset = 0
@@ -121,11 +121,11 @@ class host_seg:
             seg_math = self.ip_pattern.match(ip)
             
             if seg_math:
-                ip1 = struct.unpack("I", socket.inet_aton(seg_math.group(1)))[0]
-                ip2 = struct.unpack("I", socket.inet_aton(seg_math.group(2)))[0]
+                ip1 = struct.unpack("L", socket.inet_aton(seg_math.group(1)))[0]
+                ip2 = struct.unpack("L", socket.inet_aton(seg_math.group(2)))[0]
                 self.append(socket.ntohl(ip1), socket.ntohl(ip2))
             else:
-                ip1 = struct.unpack("I", socket.inet_aton(ip))[0]
+                ip1 = struct.unpack("L", socket.inet_aton(ip))[0]
                 self.append(socket.ntohl(ip1))
                 
             offset = m.end()
@@ -264,7 +264,7 @@ class node_task(base_task):
             plugin = self.plugin[pos:]
             self.plugin = self.plugin[:pos]
 
-            ip = socket.inet_ntoa(struct.pack("I", socket.htonl(self.hosts.current_host)))
+            ip = socket.inet_ntoa(struct.pack("L", socket.htonl(self.hosts.current_host)))
             child = node_task(self.name, ip, plugin)
             
         self.childs[child.id] = child
