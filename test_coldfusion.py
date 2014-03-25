@@ -49,7 +49,7 @@ def detect_cf_pwd(host):
             response = urllib2.urlopen(url)
             if response.code != 200:
                 continue;
-                        
+            print "CF SRV OPEN"
             http_headers = response.info()
             if http_headers.has_key('Server'):
                 server_info = http_headers['Server']
@@ -102,7 +102,7 @@ class port_plugin(engine_plugin):
         
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
-        print "handle_task: %s\r" % ip
+        print "handle_task: %s\r" % ip,
         '''
         self.log(task_info, "handle_task: %s process:%d" %  (ip, task_info['process']))
         for port in self.get_cfg_vaule(task_info, "ports").split(" "):
@@ -123,12 +123,6 @@ class port_plugin(engine_plugin):
 def init_plugin(name):
     return port_plugin(name)
 
-
-if __name__ == "__main__":
-    #host = "www.advan-corp.co.jp"
-    host = "www.carris.com"
-    (url, ver, server_info), pass_hash = detect_cf_pwd(host)
-    print "DONE:url:%s->pass_hash:%s" % (url, pass_hash)
     
         
 
