@@ -49,7 +49,7 @@ def detect_cf_pwd(host):
             response = urllib2.urlopen(url)
             if response.code != 200:
                 continue;
-            print "CF SRV OPEN"
+            
             http_headers = response.info()
             if http_headers.has_key('Server'):
                 server_info = http_headers['Server']
@@ -57,22 +57,26 @@ def detect_cf_pwd(host):
                 server_info = ""
                 
             page = response.read()
+                
             if "1995-2009 Adobe Systems" in page or "1995-2010 Adobe Systems" in page:
                 ver = 9
             elif "1997-2012 Adobe Systems" in page:
                 ver = 10
             else:
                 ver = None
-                
+            
             if "IIS" in server_info or "Windows" in server_info:
                 os = "win"
             elif "Apache/" in server_info:
                 os = "lnx"
             else:
                 os = None
-                
+
             cf_srv_info = (url, ver, server_info)
-            
+
+            if not "ColdFusion Administrator Login" in page:
+                continue
+                
             for _os, _ver, _path in pwd_path_list:
                 if _os == os or not os:
                     if _ver == ver or not ver or not _ver:
