@@ -9,30 +9,43 @@ if __name__ == "__main__":
     filename = sys.argv[1]
     outers = sys.argv[3].split(',')
     split_c = '\t'
-    
+           
     if len(sys.argv) > 4:
         split_c = sys.argv[4]
     
     #filter = [(index, value,  op[=?],), ]
     filters = []
-    for _filter in sys.argv[2].split(','):
-        id, value = re.split(r"\s*[=?]\s*", _filter)
+    for _filter in sys.argv[2].split(','):        
+        m = re.match(r"(\d+)\s*([=?!]+)\s*(.+)$", _filter)
+        if not m:
+            raise "filter error!"
+        
+        id, op, value = m.groups()        
         id = int(id)
-        if id < 1 or id > 64:
+        if id < 1 or id > 64 or len(op) > 2:
             raise "filter index error!!!"
-        filters.append((id, value, '=' in _filter))
+        
+        filters.append((id, value, op))
 
     fp = open(filename, 'r')
     for line in fp:
         fileds = line.split(split_c)
         match = 0
         for _filter in filters:
-            id, value, equal = _filter
+            id, value, op = _filter
             if id > len(fileds):
                 break
-            if equal and fileds[id - 1].strip() == value.strip():
+            
+            v1 = fileds[id - 1].strip()
+            v2 = value.strip()
+            
+            if op == '=' and v1 == v2:
                 match += 1
-            elif not equal and value.strip() in fileds[id - 1].strip():
+            elif op == '?' and v1 and (v2 in v1 or v1 in v2):
+                match += 1
+            elif op == '!=' and v1 != v2:
+                match += 1
+            elif op == '!?' and v1 and not (v2 in v1 or v1 in v2):
                 match += 1
                 
         if match == len(filters):
