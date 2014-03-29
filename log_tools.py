@@ -3,11 +3,15 @@ import sys, re
 
 if __name__ == "__main__":
     '''
-        usage:tools log_file field1=value,field2=value    out[filed1,field2]
+        usage:tools log_file filter{field1=value,field2=value}  out{filed1,field2} [split]option
     '''
     
     filename = sys.argv[1]
     outers = sys.argv[3].split(',')
+    split_c = '\t'
+    
+    if len(sys.argv) > 4:
+        split_c = sys.argv[4]
     
     #filter = [(index, value,  op[=?],), ]
     filters = []
@@ -20,7 +24,7 @@ if __name__ == "__main__":
 
     fp = open(filename, 'r')
     for line in fp:
-        fileds = line.split('\t')
+        fileds = line.split(split_c)
         match = 0
         for _filter in filters:
             id, value, equal = _filter
