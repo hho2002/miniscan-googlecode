@@ -18,7 +18,10 @@ class engine_plugin:
         pass
     def handle_log(self, log_info, log):
         self.log_lock.acquire()
-        print log_info['time'], log
+        try:
+            print log_info['time'], log
+        except:
+            pass        
         self.log_lock.release()
         # log to file
         log = log_info['node'] + '\t' + \
