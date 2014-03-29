@@ -1,4 +1,3 @@
-# -*- coding: gb2312 -*-
 from task import *
 import socket, struct, time
 import requests, re
@@ -89,7 +88,7 @@ def detect_cf_pwd(host):
     
     return None
 
-class port_plugin(engine_plugin):
+class cf_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
         #self.max_process = 20
@@ -115,9 +114,4 @@ class port_plugin(engine_plugin):
             self.log(task_info, "%s\t%s\t%s" % (url, server_info, pass_hash))
             
 def init_plugin(name):
-    return port_plugin(name)
-
-    
-        
-
-    
+    return cf_plugin(name)

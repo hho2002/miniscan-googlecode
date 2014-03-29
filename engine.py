@@ -1,5 +1,5 @@
 # -*- coding: gb2312 -*-
-import re, struct
+import re, struct, os
 import threading
 import Queue
 import copy
@@ -12,6 +12,7 @@ from node import *
 from task import *
 from crawler import web_crawler
 import web_server
+import requests
 
 class cfg_file_parser:
     # class (or static) variable
@@ -200,7 +201,7 @@ class engine(dis_node):
         else:
             cfg = cfg_file_parser(filename)
         
-        task_name = filename.split('.')[0]
+        task_name = os.path.basename(filename).split('.')[0]
         cfg.task = task_name
         self.cfgs[task_name] = cfg
         plugins = self.__init_plugins(cfg)
@@ -562,8 +563,13 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
+    os.chdir(os.path.dirname(sys.argv[0]))
     server = engine()
-    server.load_task("task.txt")
+    if len(sys.argv) == 2:
+        server.load_task(sys.argv[1])
+    else:
+        server.load_task("task.txt")
+            
     #server.load_task("task4.txt")
 #    server.load_task("task2.txt")
     #server.run()
