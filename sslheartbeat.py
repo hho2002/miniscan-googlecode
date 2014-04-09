@@ -69,9 +69,16 @@ def recvmsg(s):
 
 def get_prints(s):
     prints = ''
+    sp_cnt = 0
     for c in s:
         if 32 <= ord(c) <= 126:
+            if sp_cnt > 0:
+                prints += '\x00'
+                sp_cnt = 0
             prints += c
+        else:
+            sp_cnt += 1
+
     return prints
 
 def hit_hb(s):
@@ -93,7 +100,7 @@ class sslhb_plugin(engine_plugin):
         print "\r>>%s\t" % ip,
         for port in self.get_cfg_vaule(task_info, "ports").split(" "):
             try:
-                sock = socket.create_connection((ip, int(port)), 1)
+                sock = socket.create_connection((ip, int(port)), 4)
                 if sock:
                     #self.log(task_info, "%s\t%d\topen" % (ip, int(port)))
                     sock.send(hello)
