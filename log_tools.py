@@ -1,18 +1,35 @@
 # -*- coding: gb2312 -*-
 import sys, re
+import hashlib
 
+def strip_same(filename):
+    
+    fp = open(filename, 'r')
+    strip_dict = {}
+    for line in fp:
+        md5 = hashlib.new("md5", line).hexdigest()
+        if strip_dict.has_key(md5):
+            continue
+        strip_dict[md5] = 1
+        print line
+            
 if __name__ == "__main__":
     '''
-        usage:tools log_file filter{field1=value,field2=value}  out{filed1,field2} [split]option
+        usage:tools log_file filter{field1=value,field2=value}  out{filed1,field2} [option]
     '''
-    
     filename = sys.argv[1]
-    outers = sys.argv[3].split(',')
-    split_c = '\t'
-           
-    if len(sys.argv) > 4:
-        split_c = sys.argv[4]
     
+    split_c = '\t'
+    options = {'split':'\t', 'strip':0}
+    if len(sys.argv) > 4:
+        for opt in sys.argv[4].split(','):
+            key,value = opt.split('=')
+            options[key] = value
+    
+    strip_dict = {}
+    split_c = options['split']
+    strip = int(options['strip'])
+    outers = sys.argv[3].split(',')
     #filter = [(index, value,  op[=?],), ]
     filters = []
     for _filter in sys.argv[2].split(','):        
@@ -55,4 +72,10 @@ if __name__ == "__main__":
                 if outer != outers[len(outers)-1]:
                     s += '\t'
 
-            print s
+            if strip:
+                md5 = hashlib.new("md5", s).hexdigest()
+                if not strip_dict.has_key(md5):
+                    strip_dict[md5] = 1
+                    print s
+            else:
+                print s

@@ -124,16 +124,23 @@ class sslhb_plugin(engine_plugin):
     
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
-        #self.log(task_info, "handle_task: %s process:%d" %  (ip, task_info['process']))
+        
         print "\r>>%s\t" % ip,
         
-        is_crack = self.get_cfg_vaule(task_info, "crack")
+        #init plugin vars
+        is_crack = 0
         auth_info = None
+        filter = None
+        ports = ['443']
+        
+        try:
+            is_crack = int(self.get_cfg_vaule(task_info, "crack"))
+            ports = self.get_cfg_vaule(task_info, "ports").split(" ")
+        except:
+            pass
         
         if is_crack:
-            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"
-        else:
-            filter = None
+            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"           
             
         while True:
             result = None
@@ -146,11 +153,11 @@ class sslhb_plugin(engine_plugin):
             if not is_crack:
                 break
             
-            if auth_info != result:
+            if result and auth_info != result:
                 self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
                 auth_info = result
                 
-            time.sleep(5)
+            time.sleep(10)
             
 def init_plugin(name):
     return sslhb_plugin(name)
