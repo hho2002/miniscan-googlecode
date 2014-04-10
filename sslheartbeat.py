@@ -129,9 +129,9 @@ class sslhb_plugin(engine_plugin):
         
         #init plugin vars
         is_crack = 0
-        auth_info = None
         filter = None
         ports = ['443']
+        strip_dict = {}
         
         try:
             is_crack = int(self.get_cfg_vaule(task_info, "crack"))
@@ -153,9 +153,9 @@ class sslhb_plugin(engine_plugin):
             if not is_crack:
                 break
             
-            if result and auth_info != result:
+            if result and not strip_dict.has_key(result):
+                strip_dict[result] = 1
                 self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
-                auth_info = result
                 
             time.sleep(10)
             
