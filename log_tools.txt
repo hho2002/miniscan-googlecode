@@ -4,8 +4,11 @@ filter:过滤器，格式为【字段ID 操作符 字段值】多个过滤器用逗号分隔，字段ID从1开始
     操作符四种 = （等于）!=不等于 ? （相似）!?（不相似）
 outfields:需要输出的字段，多个字段用逗号隔开
 [options]:
-    split=" ",strip=1/0
-
+    split=" ",strip=1/0,line_split=""
+    split列分隔符，默认\t
+    strip 输出去重，默认不去重
+    line_split行开始识别符（处理一个日志多行情况）
+    
 log_tools.py task.log 5=80,5=3389 4
 log_tools.py task.log 5!=22 4,5
 log_tools.py task.log 5?IIS 4,5

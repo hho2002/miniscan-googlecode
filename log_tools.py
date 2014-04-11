@@ -9,8 +9,12 @@ def is_string_like(s1, s2):
     return (s1 in s2) or (s2 in s1)
 
 def process_line(line_txt, filters, outers, strip):
-    line, remain = line_txt.split('\n', 1)
-    
+    if '\n' in line_txt:
+        line, remain = line_txt.split('\n', 1)
+    else:
+        line = line_txt
+        remain = ''
+            
     fileds = line.split(split_c)
     fileds[len(fileds)-1] += remain
         
