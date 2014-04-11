@@ -7,13 +7,15 @@ class engine_plugin:
     def __init__(self, name):
         self.name = name
         self.engine = None
+        self.cfg = None
         self.max_process = 0
         self.log_lock = threading.Lock()
+    def post_init(self):
+        pass
     def log(self, task_info, log):
         self.engine.log(task_info, log)
     def get_cfg_vaule(self, task_info, key):
-        cfg = self.engine.cfgs[task_info['task']]
-        return cfg.get_cfg_vaule(key)
+        return self.cfg.get_cfg_vaule(key)
     def handle_task(self, task_info):
         pass
     def handle_log(self, log_info, log):

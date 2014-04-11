@@ -129,6 +129,9 @@ class engine(dis_node):
 
             plugin = module.init_plugin(plugin_name)
             plugin.engine = self
+            plugin.cfg = cfg
+            plugin.post_init()
+            
             self.plugins[plugin_name] = plugin
             
         return plugins

