@@ -152,7 +152,7 @@ class sslhb_plugin(engine_plugin):
             pass
         
         if is_crack:
-            filter = "([^=;&]+)[&;]*\s*pass\w*=(.+?)[;&\s]"
+            filter = "[\x20-\x7f]{1,32}pass\w*=[\x20-\x7f]{1,32}"
             
         while True:
             result = None
@@ -173,4 +173,3 @@ class sslhb_plugin(engine_plugin):
             
 def init_plugin(name):
     return sslhb_plugin(name)
-

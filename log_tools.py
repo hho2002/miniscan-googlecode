@@ -3,8 +3,17 @@ import sys, re
 
 strip_set = set()
 
-def process_line(line, filters, outers, strip):
-    fileds = line_txt.split(split_c)
+def is_string_like(s1, s2):
+    s1 = s1.lower()
+    s2 = s2.lower()
+    return (s1 in s2) or (s2 in s1)
+
+def process_line(line_txt, filters, outers, strip):
+    line, remain = line_txt.split('\n', 1)
+    
+    fileds = line.split(split_c)
+    fileds[len(fileds)-1] += remain
+        
     match = 0
     for _filter in filters:
         id, value, op = _filter
@@ -16,11 +25,11 @@ def process_line(line, filters, outers, strip):
         
         if op == '=' and v1 == v2:
             match += 1
-        elif op == '?' and v1 and (v2 in v1 or v1 in v2):
+        elif op == '?' and v1 and is_string_like(v1, v2):
             match += 1
         elif op == '!=' and v1 != v2:
             match += 1
-        elif op == '!?' and v1 and not (v2 in v1 or v1 in v2):
+        elif op == '!?' and v1 and not is_string_like(v1, v2):
             match += 1
                 
     if match == len(filters):
@@ -78,7 +87,6 @@ if __name__ == "__main__":
             continue
         
         if line_txt:
-            print line_txt
             process_line(line_txt, filters, outers, strip)
             
         line_txt = line
