@@ -71,9 +71,10 @@ def get_prints(s):
     prints = ''
     sp_cnt = 0
     for c in s:
-        if 32 <= ord(c) <= 126:
+        #if 32 <= ord(c) <= 126:
+        if ord(c) != 0:
             if sp_cnt > 0:
-                prints += ' '
+                prints += '\x00'
                 sp_cnt = 0
             prints += c
         else:
