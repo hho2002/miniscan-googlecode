@@ -52,6 +52,7 @@ class base_task:
         self.node = None            # 该任务来自的节点
         self.plugin_process = {}    # 插件自定义进度 key = plugin value = (process, max_process)
         self.name = name
+        self.crack_mode = 0         # 破解模式，认为完成后自动重新开始
         
         for plugin in plugins:
             self.plugin_process[plugin] = [0, 1]

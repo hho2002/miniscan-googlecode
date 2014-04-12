@@ -71,11 +71,11 @@ class engine(dis_node):
         self.thread_idle = set()    # 空闲线程列表
         self.queue = None           # 多线程调度work队列
         self.plugins = {}           # 插件列表 dict key = 插件名
-        self.tasks = {}             # 任务列表 dict key = task_id
+        self.tasks = []             # 任务列表 
         self.pending_task = []      # 断线节点的需重新分发的任务
         self.cfgs = {}              # 每个任务的配置文件    key  = task_name
         self.tasks_ref = {}         # 任务引用计数器 key = id(task)
-        self.works_ref = {}         # key = 组ID value = (ref, node)
+        self.works_ref = {}         # key = 组ID value = (ref, node)    接受到works的节点处理
         self.tasks_status = {}      # key = task_name value "pause" "run"
         self.group_id = 0
         self.ref_lock = threading.Lock()
@@ -137,7 +137,7 @@ class engine(dis_node):
         return plugins
     
     def __id_to_child_task(self, _id):
-        for task in self.tasks.values():
+        for task in self.tasks:
             try:
                 child = task.get_child_by_id(_id)
                 return (child, task)
@@ -147,7 +147,7 @@ class engine(dis_node):
     
     def get_node_task_count(self):
         node_task_count = 0
-        for task in self.tasks.values():
+        for task in self.tasks:
             node_task_count += task.get_task_count()
         return node_task_count
     
@@ -197,15 +197,8 @@ class engine(dis_node):
             self.__remove_task(task_name)
         self.send_msg("TASK_STATUS", (task_name, status))
         
-    def load_task(self, filename, context=None):
-        if context:
-            print "load_task:", filename
-            cfg = cfg_file_parser(filename, StringIO.StringIO(context))
-        else:
-            cfg = cfg_file_parser(filename)
-        
-        task_name = os.path.basename(filename).split('.')[0]
-        cfg.task = task_name
+    def __load_task(self, cfg):
+        task_name = cfg.task
         self.cfgs[task_name] = cfg
         plugins = self.__init_plugins(cfg)
         
@@ -216,15 +209,29 @@ class engine(dis_node):
             task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins)
         else:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
-
+        
+        if 'crack' in cfg.key_dict.keys():
+            task.crack_mode = int(cfg.get_cfg_vaule("crack"))
+        
         task.init_plugin_process(self.plugins)
         
         self.set_task_status(task_name, "run")
         self.send_msg("CFG", cfg)
         
         self.__add_ref(task, 1)
-        self.tasks[task.id] = task
-
+        self.tasks.append(task)
+        
+    def load_task(self, filename, context=None):
+        if context:
+            print "load_task:", filename
+            cfg = cfg_file_parser(filename, StringIO.StringIO(context))
+        else:
+            cfg = cfg_file_parser(filename)
+        
+        cfg.task = os.path.basename(filename).split('.')[0]
+        
+        self.__load_task(cfg)
+        
     def handler_client_control(self, node, cmd, msg):
         if cmd in ("pause", "run", "del"):
             self.set_task_status(msg, cmd)
@@ -233,7 +240,7 @@ class engine(dis_node):
         """ 返回特定格式的web数据格式
         """
         web_tasks = {}
-        for task in self.tasks.values():
+        for task in self.tasks:
             #'task1':{'status':"run", 
             #'id':1, 'ref':1, 'log_count':10, 'remain':30, 'current':"172.16.16.1"},
             item = web_tasks[task.name] = {}
@@ -249,7 +256,7 @@ class engine(dis_node):
         """ 查询任务状态
         """
         tasks_info = 'TASK NUM:%d\n' % len(self.tasks)
-        for task in self.tasks.values():
+        for task in self.tasks:
             task_name = task.name
             if not task.current:
                 continue
@@ -353,7 +360,7 @@ class engine(dis_node):
             self.__add_ref(task, 1)
             task.node = node
             task.init_plugin_process(self.plugins)
-            self.tasks[task.id] = task
+            self.tasks.append(task)
     
     def handler_node_status(self, node, key, value):
         """ 节点状态即将发生变化
@@ -375,7 +382,7 @@ class engine(dis_node):
                 
     def __get_busy_task(self):
         task_list = []
-        for task in self.tasks.values():
+        for task in self.tasks:
             if self.tasks_status[task.name] == "run":
                 task_list.append((task.get_task_count(), task))
         
@@ -499,7 +506,7 @@ class engine(dis_node):
         print self.name, "!!!!remove task:", task_name
         self.tasks_status[task_name] = 'del'
         #清除队列tasks以及工作队列中的work
-        for task in self.tasks.values():
+        for task in self.tasks:
             if task.name == task_name:
                 task.flags |= self.FLAG_PENDING_DEL
 
@@ -523,27 +530,31 @@ class engine(dis_node):
                 else:
                     time.sleep(0.1)
                        
-            for key, task in self.tasks.items():
+            for task in self.tasks:
                 if self.tasks_ref[id(task)] <= 0:
                     if task.node:
                         self.set_node_status("done_id", task.id, task.node, True)
+                        self.tasks.remove(task)
+                        self.tasks_ref.pop(id(task))
+                        continue
                     else:
                         self.__remove_task(task.name)
                         self.send_msg("DEL_TASK", task.name)
-                        
-                    self.tasks.pop(key)
-                    continue
                 
                 if task.flags & self.FLAG_PENDING_DEL:
-                    self.tasks.pop(key)
+                    self.tasks.remove(task)
                     self.tasks_ref.pop(id(task))
                     if task.name in self.tasks_status.keys():
                         # 等待当前队列中所有work完成
                         while not self.status['idle']:
                             time.sleep(0.1)
                         print self.name, "-task:", task.name, "del done!"
-                        self.cfgs.pop(task.name)
-                        self.tasks_status.pop(task.name)
+                        # 测试任务属性是否是破解模式，如果是重启task
+                        if task.crack_mode:
+                            self.__load_task(self.cfgs[task.name])
+                        else:
+                            self.cfgs.pop(task.name)
+                            self.tasks_status.pop(task.name)
                     continue
                 
                 if task.done or self.tasks_status[task.name] != "run":
