@@ -152,7 +152,7 @@ class sslhb_plugin(engine_plugin):
             pass
         
         if is_crack:
-            filter = "[\x20-\x7f]{1,32}pass\w*=[\x20-\x7f]{1,32}"
+            filter = "[\x20-\x7e]{1,32}(?:pass|pwd|Pass|Pwd)\w*=[\x20-\x7e]{1,32}"
             
         while True:
             result = None
