@@ -153,23 +153,20 @@ class sslhb_plugin(engine_plugin):
         
         if is_crack:
             filter = "[\x20-\x7e]{1,32}(?:pass|pwd|Pass|Pwd)\w*=[\x20-\x7e]{1,32}"
+
+        result = None
+        for port in self.get_cfg_vaule(task_info, "ports").split(" "):
+            result = self.process_sslhb(ip, port, filter)
+            if not result:
+                continue
             
-        while True:
-            result = None
-            for port in self.get_cfg_vaule(task_info, "ports").split(" "):
-                result = self.process_sslhb(ip, port, filter)
-                if result and not is_crack:
-                    self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
-                    return
-                
-            if not is_crack:
-                break
-            
-            if result and not result in self.strip_set:
-                self.strip_set.add(result)
+            if is_crack and not result in self.strip_set:
                 self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
-                
-            time.sleep(10)
-            
+                self.strip_set.add(result)
+            elif not is_crack:
+                self.log(task_info, "%s\t%s\t%s" % (ip, port, result))
+
+            return
+
 def init_plugin(name):
     return sslhb_plugin(name)
