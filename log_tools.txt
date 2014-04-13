@@ -4,11 +4,19 @@ filter:过滤器，格式为【字段ID 操作符 字段值】多个过滤器用逗号分隔，字段ID从1开始
     操作符四种 = （等于）!=不等于 ? （相似）!?（不相似）
 outfields:需要输出的字段，多个字段用逗号隔开
 [options]:
-    split=" ",strip=1/0,line_split=""
+    split=" ",strip=1/0,line_split="",sort=x
     split列分隔符，默认\t
     strip 输出去重，默认不去重
     line_split行开始识别符（处理一个日志多行情况）
-    
+
+eg:
 log_tools.py task.log 5=80,5=3389 4
 log_tools.py task.log 5!=22 4,5
 log_tools.py task.log 5?IIS 4,5
+
+log_tools.py hb.log 6?passw 4,5,6=assword=([\x20-\x7e]*?)& line_split=sslheartbeat,sort=4
+    使用sslheartbeat对日志文件进行分行，一条日志可能输出多行
+    过滤器：第6列包含关键字passw
+    输出：第4,5,6列，其中第6列输出使用正则表达式assword=([\x20-\x7e]*?)& 只输出密码内容
+    统计排序：使用第4列ip地址进行统计排序，按照IP命中次品从高到低输出日志
+

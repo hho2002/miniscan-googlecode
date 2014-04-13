@@ -1,23 +1,26 @@
 # -*- coding: gb2312 -*-
 import sys, re
+import hashlib
 
 strip_set = set()
+sort_cnt = {}       #key = field[sortid], value=[cnt, [o1, o2, ..]]
 
 def is_string_like(s1, s2):
     s1 = s1.lower()
     s2 = s2.lower()
     return (s1 in s2) or (s2 in s1)
 
-def process_line(line_txt, filters, outers, strip):
+def process_line(line_txt, filters, outers, strip, sortid=0):   
     if '\n' in line_txt:
         line, remain = line_txt.split('\n', 1)
     else:
         line = line_txt
         remain = ''
-            
+    
     fileds = line.split(split_c)
     fileds[len(fileds)-1] += remain
-        
+    sort_field = None
+    
     match = 0
     for _filter in filters:
         id, value, op = _filter
@@ -39,17 +42,45 @@ def process_line(line_txt, filters, outers, strip):
     if match == len(filters):
         s = ""
         for outer in outers:
-            s += fileds[int(outer) - 1].strip()
+            ofilter = None
+            if '=' in outer:
+                outer, ofilter = outer.split('=', 1)
+            
+            t = fileds[int(outer) - 1].strip()                
+            if ofilter:
+                m = re.search(ofilter, t)
+                t = ''
+                if m:
+                    for g in m.groups(0):
+                        t += g
+                        if t != m.groups(0)[len(m.groups(0)) - 1]:
+                            t += '\t'                   
+            
+            s += t
+            if sortid == int(outer):
+                sort_field = t
+                
             if outer != outers[len(outers) - 1]:
                 s += '\t'
 
+        if strip and s in strip_set:
+            return None
+        
         if strip:
-            if not s in strip_set:
-                strip_set.add(s)
-                print s
-        else:
-            print s
+            strip_set.add(s)
+            
+        if sort_field:
+            if sort_cnt.has_key(sort_field):
+                sort_cnt[sort_field][0] += 1
+                sort_cnt[sort_field][1].append(s)
+            else:
+                sort_cnt[sort_field] = [1, [s,]]
+                #sort_result[sort_field] = [s, ]
 
+        return s
+
+    return None
+    
 if __name__ == "__main__":
     '''
         usage:tools log_file filter{field1=value,field2=value}  out{filed1,field2} [option]
@@ -57,7 +88,7 @@ if __name__ == "__main__":
     filename = sys.argv[1]
     
     split_c = '\t'
-    options = {'split':'\t', 'strip':0, 'line_split':''}
+    options = {'split':'\t', 'strip':0, 'line_split':'', 'sort':0}
     
     if len(sys.argv) > 4:
         for opt in sys.argv[4].split(','):
@@ -67,10 +98,12 @@ if __name__ == "__main__":
     split_c = options['split']
     strip = int(options['strip'])
     line_split = options['line_split']
+    sortid = int(options['sort'])    
     
     outers = sys.argv[3].split(',')
     #filter = [(index, value,  op[=?],), ]
     filters = []
+    
     for _filter in sys.argv[2].split(','):        
         m = re.match(r"(\d+)\s*([=?!]+)\s*(.+)$", _filter)
         if not m:
@@ -91,10 +124,18 @@ if __name__ == "__main__":
             continue
         
         if line_txt:
-            process_line(line_txt, filters, outers, strip)
-            
+            s = process_line(line_txt, filters, outers, strip, sortid)
+            if not sortid:
+                print s
+                
         line_txt = line
     
     #EOF
-    process_line(line_txt, filters, outers, strip)
-
+    s = process_line(line_txt, filters, outers, strip, sortid)
+    if not sortid:
+        print s
+    else:
+        for x in sorted(sort_cnt.iteritems(), key=lambda d:d[1], reverse=True):
+            for s in x[1][1]:
+                print s
+    
