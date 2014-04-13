@@ -125,14 +125,14 @@ if __name__ == "__main__":
         
         if line_txt:
             s = process_line(line_txt, filters, outers, strip, sortid)
-            if not sortid:
+            if not sortid and s:
                 print s
                 
         line_txt = line
     
     #EOF
     s = process_line(line_txt, filters, outers, strip, sortid)
-    if not sortid:
+    if not sortid and s:
         print s
     else:
         for x in sorted(sort_cnt.iteritems(), key=lambda d:d[1], reverse=True):
