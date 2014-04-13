@@ -540,6 +540,12 @@ class engine(dis_node):
                     else:
                         self.__remove_task(task.name)
                         self.send_msg("DEL_TASK", task.name)
+                        # 测试任务属性是否是破解模式，如果是重启task
+                        if task.crack_mode:
+                            self.tasks.remove(task)
+                            self.tasks_ref.pop(id(task))
+                            self.__load_task(self.cfgs[task.name])
+                            continue
                 
                 if task.flags & self.FLAG_PENDING_DEL:
                     self.tasks.remove(task)
@@ -548,13 +554,11 @@ class engine(dis_node):
                         # 等待当前队列中所有work完成
                         while not self.status['idle']:
                             time.sleep(0.1)
+                            
                         print self.name, "-task:", task.name, "del done!"
-                        # 测试任务属性是否是破解模式，如果是重启task
-                        if task.crack_mode:
-                            self.__load_task(self.cfgs[task.name])
-                        else:
-                            self.cfgs.pop(task.name)
-                            self.tasks_status.pop(task.name)
+
+                        self.cfgs.pop(task.name)
+                        self.tasks_status.pop(task.name)
                     continue
                 
                 if task.done or self.tasks_status[task.name] != "run":

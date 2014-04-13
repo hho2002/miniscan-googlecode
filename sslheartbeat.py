@@ -136,7 +136,9 @@ class sslhb_plugin(engine_plugin):
             pass
     
     def handle_task(self, task_info):
-        ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(task_info['work'])))
+        ip = task_info['work']
+        if not isinstance(ip, str):
+            ip =  socket.inet_ntoa(struct.pack("L", socket.htonl(ip)))
         
         print "\r>>%s\t" % ip,
         

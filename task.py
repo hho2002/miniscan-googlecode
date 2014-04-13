@@ -131,8 +131,12 @@ class host_seg:
                 ip2 = struct.unpack("L", socket.inet_aton(seg_math.group(2)))[0]
                 self.append(socket.ntohl(ip1), socket.ntohl(ip2))
             else:
-                ip1 = struct.unpack("L", socket.inet_aton(ip))[0]
-                self.append(socket.ntohl(ip1))
+                try:
+                    ip1 = struct.unpack("L", socket.inet_aton(ip))[0]
+                    self.append(socket.ntohl(ip1))
+                except:
+                    # ÓòÃûĞÎÊ½
+                    self.append(ip)
                 
             offset = m.end()
         
@@ -147,7 +151,11 @@ class host_seg:
         if not self.current_host:
             self.current_host = start_ip
             
-        self.ip_count += end_ip - start_ip + 1
+        if end_ip == start_ip:
+            self.ip_count += 1
+        else:
+            self.ip_count += end_ip - start_ip + 1
+            
         self.ip_seg_list.append((start_ip, end_ip))
 
     def split(self, count):
