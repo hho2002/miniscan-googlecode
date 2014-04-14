@@ -124,14 +124,24 @@ if __name__ == "__main__":
             continue
         
         if line_txt:
-            s = process_line(line_txt, filters, outers, strip, sortid)
+            try:
+                s = process_line(line_txt, filters, outers, strip, sortid)
+            except:
+                print 'erro:', line
+                s = ''
+                
             if not sortid and s:
                 print s
                 
         line_txt = line
     
     #EOF
-    s = process_line(line_txt, filters, outers, strip, sortid)
+    try:
+        s = process_line(line_txt, filters, outers, strip, sortid)
+    except:
+        print 'erro: EOF'
+        s = ''
+        
     if not sortid and s:
         print s
     else:
