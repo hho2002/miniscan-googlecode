@@ -30,6 +30,7 @@ class tomcat_plugin(engine_plugin):
                     #print headers['Server']
                     #print "\t\n[OK]Username:", user,"Password:", pwd,"\n"
                     return headers
+                return ''
         except :
             pass
         return None
@@ -37,7 +38,8 @@ class tomcat_plugin(engine_plugin):
     def handle_task(self, task_info):
         ip =  socket.inet_ntoa(struct.pack("I", socket.htonl(task_info['work'])))
         print "\r>>: %s" % ip,
-        
+
+        tomcat_pro = None
         for port in self.get_cfg_vaule(task_info, "ports").split(" "):
             try:
                 sock = socket.create_connection((ip, port), 4)
@@ -45,10 +47,38 @@ class tomcat_plugin(engine_plugin):
 
                 for user in self.get_cfg_vaule(task_info, "users").split("\n"):
                     for pwd in self.get_cfg_vaule(task_info, "passes").split("\n"):
-                        if self.test_tomcat(ip, port, user, pwd):
+                        if tomcat_pro == 'http':
+                            if self.test_tomcat(ip, port, user, pwd):
+                                self.log(task_info, "http://%s:%s\t%s\t%s OK!!!!" % (ip, port, user, pwd))
+                                return
+                            continue
+                        elif tomcat_pro == 'https':
+                            if self.test_tomcat(ip, port, user, pwd, True):
+                                self.log(task_info, "https://%s:%s\t%s\t%s OK!!!!" % (ip, port, user, pwd))
+                                return
+                            continue
+                        
+                        ret1 = self.test_tomcat(ip, port, user, pwd)
+                        if ret1:
                             self.log(task_info, "http://%s:%s\t%s\t%s OK!!!!" % (ip, port, user, pwd))
-                        elif self.test_tomcat(ip, port, user, pwd, True):
+                            return
+                        
+                        ret2 = self.test_tomcat(ip, port, user, pwd, True)
+                        if ret2:
                             self.log(task_info, "https://%s:%s\t%s\t%s OK!!!!" % (ip, port, user, pwd))
+                            return
+                            
+                        if ret1 == None and ret2 == None:
+                            print "%s no tomcat found" % ip
+                            return
+
+                        if not tomcat_pro:
+                            if ret1 != None:
+                                tomcat_pro = 'http'
+                            else:
+                                tomcat_pro = 'https'
+                            self.log(task_info, "%s tomcat open" % ip)
+                            
             except:pass
         
 def init_plugin(name):
