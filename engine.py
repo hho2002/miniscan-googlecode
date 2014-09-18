@@ -7,6 +7,7 @@ import StringIO
 import socket
 import time
 import random
+import poplib, imaplib
 
 from node import *
 from task import *
@@ -581,7 +582,10 @@ class engine(dis_node):
                 self.set_node_status("busy", False)
             
 if __name__ == '__main__':
-    os.chdir(os.path.dirname(sys.argv[0]))
+    try:
+        os.chdir(os.path.dirname(sys.argv[0]))
+    except:pass
+    
     server = engine()
     if len(sys.argv) == 2:
         server.load_task(sys.argv[1])

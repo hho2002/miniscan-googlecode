@@ -105,8 +105,9 @@ class pop3crack_plugin(engine_plugin):
             
         mail = mail[0]
         for pwd in pass_list:
-            print "\r%s\t%s" % (mail, pwd)
+            print "\r%s\t%s" % (mail, pwd),
             if self.pop3test(mail, pwd):
+                print
                 self.log(task_info, "%s\t%s\tSUCESS" % (mail, pwd))
                 
 def init_plugin(name):
