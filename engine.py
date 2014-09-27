@@ -575,7 +575,10 @@ class engine(dis_node):
                         work.done_evt = (self.__works_done, task)
                     
                     self.queue.put(work)
-                except: pass
+                except:
+                    #Task ERROR!!!
+                    task.done = True
+                    self.__works_done(task)
                 
             # test node busy
             if self.queue.full():

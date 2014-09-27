@@ -1,5 +1,6 @@
-import urllib2,urllib,random
+import urllib2, urllib, random
 import re, Queue, threading
+import time
 
 from sgmllib import SGMLParser
 from task import *
@@ -36,18 +37,28 @@ class google_crawler(base_task):
         self.search_start = 0
         self.urls = set()
         self.search_end = False
-        
+        self.useragent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20130406 Firefox/23.0'
+        self.sleep = 4
+ 
     def handler_next(self):        
         if len(self.urls) > 0:
             return self.urls.pop()
         
         queryStr = urllib2.quote(self.search)
-        url = '%s/search?hl=en&q=%s&start=%d' % (self.host, queryStr, self.search_start)
+        url = '%s/search?q=%s&start=%d' % (self.host, queryStr, self.search_start)
         
         request = urllib2.Request(url)
-        request.add_header('User-agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20130406 Firefox/23.0')
-        response = urllib2.urlopen(request)
-        html = response.read()
+        request.add_header('User-agent', self.useragent)
+        #request.add_header('Referer', '%s/?gws_rd=ssl' % self.host)
+        time.sleep(self.sleep)
+        
+        try:
+            response = urllib2.urlopen(request, timeout=15)
+            html = response.read()
+        except Exception,e:
+            print e
+            self.search_end = True
+            raise Exception('search end')
         
         url_lister = URLLister()
         url_lister.feed(html)

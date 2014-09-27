@@ -98,6 +98,7 @@ class base_task:
             try:
                 self.current = self.handler_next()
             except:
+                print 'task handler_next Exception!!!!'
                 self.done = True
                 raise Exception("Move the last")
             
