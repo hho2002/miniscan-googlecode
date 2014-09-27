@@ -12,6 +12,7 @@ import poplib, imaplib
 from node import *
 from task import *
 from crawler import web_crawler
+from google_crawler import google_crawler
 import web_server
 import requests
 
@@ -208,6 +209,8 @@ class engine(dis_node):
             task = id_task(task_name, int(cfg.get_cfg_vaule("max_id")), plugins)
         elif 'host' in cfg.key_dict.keys():
             task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins)
+        elif 'google' in cfg.key_dict.keys():
+            task = google_crawler(task_name, cfg.get_cfg_vaule("google"), cfg.get_cfg_vaule("google_keys"), plugins)
         else:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
         

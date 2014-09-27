@@ -1,0 +1,3 @@
+plugin = gg_test
+google = https://www.google.com
+google_keys = intext:HFS 2.3 site:tw
