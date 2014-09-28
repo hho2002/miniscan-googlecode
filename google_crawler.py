@@ -32,7 +32,7 @@ class google_crawler(base_task):
         self.queue = Queue.Queue()
         self.url_count = 0
         self.mutex = threading.Lock()
-        self.search_start = 0
+        
         self.urls = set()
         self.search_end = False
         
@@ -45,9 +45,14 @@ class google_crawler(base_task):
             self.useragent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20130406 Firefox/23.0'
             
         try:
-            self.sleep = cfg.get_cfg_vaule("sleep")
+            self.sleep = int(cfg.get_cfg_vaule("sleep"))
         except:
             self.sleep = 2
+            
+        try:
+            self.search_start = int(cfg.get_cfg_vaule("start"))
+        except:
+            self.search_start = 0
  
     def handler_next(self):        
         if len(self.urls) > 0:
@@ -59,7 +64,8 @@ class google_crawler(base_task):
         request = urllib2.Request(url)
         request.add_header('User-agent', self.useragent)
         #request.add_header('Referer', '%s/?gws_rd=ssl' % self.host)
-        time.sleep(self.sleep)
+
+        time.sleep(random.randint(1, self.sleep))
         
         try:
             response = urllib2.urlopen(request, timeout=15)
