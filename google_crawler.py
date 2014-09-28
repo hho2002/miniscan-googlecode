@@ -26,19 +26,28 @@ class URLLister(SGMLParser):
     #results = extractSearchResults(html)
     
 class google_crawler(base_task):
-    def __init__(self, name, host, search, plugins):
+    def __init__(self, name, cfg, plugins):
         base_task.__init__(self, name, plugins)
         self.nodes = {}
         self.queue = Queue.Queue()
         self.url_count = 0
         self.mutex = threading.Lock()
-        self.host = host
-        self.search = search            # search keys
         self.search_start = 0
         self.urls = set()
         self.search_end = False
-        self.useragent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20130406 Firefox/23.0'
-        self.sleep = 4
+        
+        self.host = cfg.get_cfg_vaule("google")
+        self.search = cfg.get_cfg_vaule("google_keys")            # search keys
+        
+        try:
+            self.useragent = cfg.get_cfg_vaule("useragent")
+        except:
+            self.useragent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20130406 Firefox/23.0'
+            
+        try:
+            self.sleep = cfg.get_cfg_vaule("sleep")
+        except:
+            self.sleep = 2
  
     def handler_next(self):        
         if len(self.urls) > 0:
@@ -71,9 +80,10 @@ class google_crawler(base_task):
         #one page 10 resules
         self.urls = set(url_lister.urls[-10:])
         
-        print len(self.urls), self.search_start, url_lister.urls[0]
+        print "\r%d\t%s" % (self.search_start, url_lister.urls[-1])
         
-        self.search_start += len(self.urls)
+        #print len(self.urls), self.search_start, url_lister.urls[0]        
+        self.search_start += 10 #len(self.urls)
         return self.urls.pop()
     
     def get_task_count(self):

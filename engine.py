@@ -210,7 +210,7 @@ class engine(dis_node):
         elif 'host' in cfg.key_dict.keys():
             task = node_task(task_name, cfg.get_cfg_vaule("host"), plugins)
         elif 'google' in cfg.key_dict.keys():
-            task = google_crawler(task_name, cfg.get_cfg_vaule("google"), cfg.get_cfg_vaule("google_keys"), plugins)
+            task = google_crawler(task_name, cfg, plugins)
         else:
             task = web_crawler(task_name, cfg.get_cfg_vaule("webs"), plugins)
         
